@@ -1,0 +1,13 @@
+# assembler / toolchain binaries - do not vendor these
+*.exe
+*.dll
+
+# assembler byproducts
+Listing.txt
+*.sym
+*.lst
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
