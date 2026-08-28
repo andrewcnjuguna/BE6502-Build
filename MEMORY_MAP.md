@@ -122,6 +122,91 @@ during PHI2 low is ignored. 138 propagation is ~20 ns, comfortable even at 5 MHz
 
 ---
 
+## Extending it: the SID at `$D400` as well
+
+Tunes ported from ACME source can have their SID addresses rewritten, because
+there they are text. A `.sid` file is a compiled blob, where they are not:
+finding every access means disassembling it, and computed, self-modified or
+pointer-indexed accesses would still slip through. So move the hardware instead
+— if the chip answers at its native `$D400`, archive tunes run untouched.
+
+Two chips: a second 74HC138 and one 74HC00.
+
+```
+                       +--------------------------+
+                       | 74HC138 #1  (existing)   |
+  A15=0 A14=1 A13=0 -->| window $4000-$5FFF       |-- Y2 --+
+  A12,A11,A10 = 010    | Y2 = $4800-$4BFF         |        |
+                       +--------------------------+        |
+                                                           +--> [ AND ] --> SID /CS
+         +---+         +--------------------------+        |
+  A14 -->| >o|-------->| 74HC138 #2  (new)        |        |
+         +---+  /A14   | window $C000-$DFFF       |-- Y5 --+
+              to /G2A  | Y5 = $D400-$D7FF         |        |
+                       +--------------------------+        |
+                                                    A15 ---+--> [ NAND ] --> ROM /CE
+```
+
+Y5 does double duty: it selects the SID **and** deselects ROM, so the two can
+never drive the bus at once.
+
+### Decoder 2 enables
+
+| pin | polarity | wired to | requires |
+|---|---|---|---|
+| `G1` | active high | A15 | A15 = 1 |
+| `/G2A` | active low | **/A14** | A14 = 1 |
+| `/G2B` | active low | A13 | A13 = 0 |
+
+That is `A15:A14:A13 = 110` = `$C000-$DFFF`. Then `C,B,A` = A12,A11,A10 splits it
+into eight 1K slots, and `101` selects **Y5 = `$D400-$D7FF`**.
+
+Note `/G2A` needs A14 **inverted** — both enables that must be high are on the
+same pin polarity, so one of them has to come through an inverter.
+
+### The 74HC00, four NANDs doing four jobs
+
+| gate | inputs | output | does what |
+|---|---|---|---|
+| 1 | A14, A14 | `/A14` | inverter for decoder 2's `/G2A` |
+| 2 + 3 | Y2, Y5 | `SID /CS` | NAND then invert = AND; SID answers at both addresses |
+| 4 | A15, Y5 | `ROM /CE` | ROM drops out across `$D400-$D7FF` |
+
+Both decoder outputs are active low, so ANDing them is a logical OR of
+"selected" — the SID responds at `$4800` *or* `$D400` and nothing already built
+changes.
+
+### The 1K hole costs nothing
+
+The ROM image is **25% occupied** — 8,072 of 32,768 bytes:
+
+```
+$8000 - $9D5A   program            7,515 bytes
+$9D5B - $F6FF   EMPTY             22,949 bytes   <-- $D400-$D7FF is in here
+$F700 - $F975   WozMon               630 bytes
+$F976 - $FFF9   EMPTY              1,668 bytes
+$FFFA - $FFFF   vectors                6 bytes
+```
+
+`$D400-$D7FF` falls in the middle of a single 22 KB run of zeros, and the ROM
+source contains **no references to `$D000-$DFFF` at all**. Nothing to move,
+nothing to pad, no rebuild. Verified across every ROM variant in the
+Fast-SD repo.
+
+If the program ever grows past `$D400`, that hole has to be stepped over.
+
+### What still will not run
+
+- Tunes that load at or above `$4000`. A binary cannot be relocated, and many
+  C64 tunes load at `$C000`.
+- Tunes with a play address of 0 — they install their own IRQ handler.
+- RSID files, which expect a live KERNAL.
+
+`SidToBE6502.py` in the SID player repo checks all of these and refuses rather
+than emitting something broken.
+
+---
+
 ## SIDKick pico wiring
 
 Board is a 28-pin DIP footprint with **pins 1-4 unpopulated** — the SKpico
