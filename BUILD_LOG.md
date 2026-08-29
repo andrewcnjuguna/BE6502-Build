@@ -5,6 +5,46 @@ project repos, not here.
 
 ---
 
+## 2026-08-29 — SID also at `$D400`
+
+Added a second 74HC138 and a 74HC00 so the SIDKick pico answers at its native
+C64 address as well as `$4800`. This is what lets `.sid` files from the archives
+run without patching their code — a compiled blob's SID accesses cannot be
+reliably found and rewritten, so the hardware moves instead.
+
+**New hardware**
+
+- **74HC138 #2** — `G1`←A15, `/G2A`←`/A14`, `/G2B`←A13 gives a `$C000-$DFFF`
+  window; `C,B,A`←A12,A11,A10 with `101` selects **Y5 = `$D400-$D7FF`**.
+  Wired identically to decoder 1 apart from A15/A14 trading pins 4 and 6, A14
+  arriving inverted, and the tap moving from Y2 (pin 13) to Y5 (pin 10).
+- **74HC00** — gate 1 inverts A14 for `/G2A`; gates 2+3 form `AND(Y2, Y5)` =
+  SID `/CS`; gate 4 forms `NAND(A15, Y5)` = ROM `/CE`.
+
+**Rewired**
+
+- Decoder 1 pin 13 no longer goes straight to SID `/CS`; it is now an AND input.
+- ROM `/CE` now comes from the 74HC00 rather than its previous source.
+
+**Verified**
+
+- Register-poke smoke test plays at **both** `$4800` and `$D400`.
+- WozMon still responds, which proves the rewired ROM `/CE` did not break the
+  ROM either side of the new 1 KB hole.
+- Decode equations were checked exhaustively in software beforehand across all
+  65536 addresses: no address selects both the SID and ROM.
+
+**Cost**
+
+None in ROM. `$D400-$D7FF` already sat inside a 22 KB run of zeros and the ROM
+source has no references to `$D000-$DFFF`. If the program ever grows past
+`$D400`, that hole has to be stepped over.
+
+See [MEMORY_MAP.md](MEMORY_MAP.md) for pinouts, and `gal/BE6502DEC.pld` for the
+single-GAL16V8 version that would replace all three logic chips.
+
+---
+
 ## 2026-08-27 — SIDKick pico at `$4800`
 
 Added a SIDKick pico 0.2 DAC as a SID replacement.
@@ -33,8 +73,6 @@ Added a SIDKick pico 0.2 DAC as a SID replacement.
   A15=0 and A14=0 — so reads from the SID region do not contend.
 - Worked on first power-up: register-poke smoke test, arpeggio test program and
   Monty on the Run all played without troubleshooting.
-
-See [MEMORY_MAP.md](MEMORY_MAP.md) for the full decode and wiring detail.
 
 ---
 
