@@ -150,6 +150,55 @@ Two chips: a second 74HC138 and one 74HC00.
 Y5 does double duty: it selects the SID **and** deselects ROM, so the two can
 never drive the bus at once.
 
+### Wiring it: decoder 2 is decoder 1 with two pins changed
+
+Selects and `/G2B` are identical on both. **A15 and A14 trade places on pins 4
+and 6, and A14 arrives inverted.** Then tap Y5 (pin 10) instead of Y2 (pin 13).
+
+```
+        74HC138 #1  (already built)         74HC138 #2  (new)
+          +----\__/----+                      +----\__/----+
+    A10 --|1  A  VCC 16|-- +5V          A10 --|1  A  VCC 16|-- +5V
+    A11 --|2  B   Y0 15|-- n/c          A11 --|2  B   Y0 15|-- n/c
+    A12 --|3  C   Y1 14|-- n/c          A12 --|3  C   Y1 14|-- n/c
+ >> A15 --|4 /G2A Y2 13|-- SID /CS *  >>/A14 -|4 /G2A Y2 13|-- n/c
+    A13 --|5 /G2B Y3 12|-- n/c          A13 --|5 /G2B Y3 12|-- n/c
+ >> A14 --|6  G1  Y4 11|-- ACIA /CS   >> A15 -|6  G1  Y4 11|-- n/c
+    n/c --|7  Y7  Y5 10|-- n/c          n/c --|7  Y7  Y5 10|-- to both gates <<
+    GND --|8  GND Y6  9|-- n/c          GND --|8  GND Y6  9|-- n/c
+          +------------+                      +------------+
+
+  >> marks the three pins that differ.
+  *  pin 13 no longer goes straight to the SID - it becomes an AND input.
+```
+
+### The 74HC00, pin by pin
+
+Pin 7 is GND, pin 14 is +5V. Gate 1 is an inverter made by tying both inputs
+together; gate 3 does the same to turn gate 2's NAND into an AND.
+
+| gate | in pins | fed from | out pin | goes to |
+|---|---|---|---|---|
+| 1 — inverter | 1, 2 | both to **A14** | 3 | decoder 2 **pin 4** (`/G2A`) |
+| 2 — NAND | 4, 5 | decoder 1 pin 13 (Y2), decoder 2 pin 10 (Y5) | 6 | gate 3 inputs |
+| 3 — inverter | 9, 10 | both to **pin 6** | 8 | **SID /CS**, SID pin 8 |
+| 4 — NAND | 12, 13 | **A15**, decoder 2 pin 10 (Y5) | 11 | **ROM /CE** |
+
+Decoder 2's Y5 is the only signal fanning out to two places — gate 2 pin 5 and
+gate 4 pin 13. That single wire is what stops the SID and ROM ever driving
+together.
+
+### Two wires to REMOVE first
+
+Both currently have one source and will end up with two if forgotten:
+
+1. Decoder 1 pin 13 (Y2) → SID `/CS`. Pull it. Y2 now feeds the AND gate, and
+   the gate's output feeds the SID.
+2. Whatever drives ROM `/CE` today. Pull it. ROM `/CE` now comes from the NAND
+   of A15 and Y5.
+
+Leaving either in place means two outputs fighting over one node.
+
 ### Decoder 2 enables
 
 | pin | polarity | wired to | requires |
