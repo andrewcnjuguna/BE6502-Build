@@ -6,8 +6,10 @@ PIN   3 =  A13
 PIN   2 =  A14 
 PIN   1 =  A15 
 PIN  14 = !ACIACS 
-PIN  15 = !LCDCS 
+PIN  15 = !LCDWR 
+PIN   7 =  PHI2 
 PIN  13 = !ROMCE 
+PIN   8 =  RW 
 PIN  12 = !SIDCS 
 %END
 
@@ -18,8 +20,8 @@ PIN  12 = !SIDCS
 ACIACS =>
     !A10 & !A11 & A12 & !A13 & A14 & !A15
 
-LCDCS =>
-    A10 & A11 & !A12 & !A13 & A14 & !A15
+LCDWR =>
+    A10 & A11 & !A12 & !A13 & A14 & !A15 & PHI2 & !RW
 
 ROMCE =>
     !A14 & A15

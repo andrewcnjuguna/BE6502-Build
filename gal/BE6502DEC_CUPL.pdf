@@ -5,7 +5,7 @@
   {Program "CUPL(WM) Version 5.0a"}
   {DBtype "Schematic"}
   {DBvrev 1.01}
-  {DBtime "Sun Aug 30 16:06:38 2026 "}
+  {DBtime "Sun Aug 30 19:29:05 2026 "}
   {DBunit "MIL"}
   {DBgrid 10}
   {Lyrstr "WIRES" 1 "BUS" 1 "GATE" 2 "IEEE" 2 "PINFUN" 3 "PINNUM" 1 
@@ -33,25 +33,29 @@
  {SYMBOL
   {PIN_DEF
    [Ly "PINCON"]
-   {P A15 {Pt "INPUT"}{Lq 0}{Ploc 100 180}}
-   {P A14 {Pt "INPUT"}{Lq 0}{Ploc 100 160}}
-   {P A13 {Pt "INPUT"}{Lq 0}{Ploc 100 140}}
-   {P A12 {Pt "INPUT"}{Lq 0}{Ploc 100 120}}
-   {P A11 {Pt "INPUT"}{Lq 0}{Ploc 100 100}}
-   {P A10 {Pt "INPUT"}{Lq 0}{Ploc 100 80}}
+   {P A15 {Pt "INPUT"}{Lq 0}{Ploc 100 220}}
+   {P A14 {Pt "INPUT"}{Lq 0}{Ploc 100 200}}
+   {P A13 {Pt "INPUT"}{Lq 0}{Ploc 100 180}}
+   {P A12 {Pt "INPUT"}{Lq 0}{Ploc 100 160}}
+   {P A11 {Pt "INPUT"}{Lq 0}{Ploc 100 140}}
+   {P A10 {Pt "INPUT"}{Lq 0}{Ploc 100 120}}
+   {P PHI2 {Pt "INPUT"}{Lq 0}{Ploc 100 100}}
+   {P RW {Pt "INPUT"}{Lq 0}{Ploc 100 80}}
    {P SIDCS' {Pt "INPUT"}{Lq 0}{Ploc 100 60}}
    {P ROMCE' {Pt "INPUT"}{Lq 0}{Ploc 100 40}}
    {P ACIACS' {Pt "INPUT"}{Lq 0}{Ploc 100 20}}
-   {P LCDCS' {Pt "I/O"}{Lq 0}{Ploc 310 20}}
+   {P LCDWR' {Pt "I/O"}{Lq 0}{Ploc 310 20}}
   }
 
   {PKG
    [Ly "REFDES"]
    [Ts 25][Tj "CB"][Tr 0][Tm "N"]
-   {Rdl 205 210}
+   {Rdl 205 250}
 
    [Ly "PINNUM"]
    [Ts 15][Tj "RC"]
+   {Pnl 120 230}
+   {Pnl 120 210}
    {Pnl 120 190}
    {Pnl 120 170}
    {Pnl 120 150}
@@ -64,13 +68,15 @@
    [Ts 15][Tj "LC"]
    {Pnl 290 30}
 
-   {Sd A 1 2 3 4 5 6 12 13 14 15}
+   {Sd A 1 2 3 4 5 6 7 8 12 13 14 15}
   }
 
   {PIC
    [Ly "GATE"]
    [Ts 15][Tj "LC"][Tr 0][Tm "N"]
-   {R 130 200 280 0}
+   {R 130 240 280 0}
+   {L 130 220 100 220}
+   {L 130 200 100 200}
    {L 130 180 100 180}
    {L 130 160 100 160}
    {L 130 140 100 140}
@@ -87,17 +93,19 @@
    {L 290 20 310 20}
    [Ly "PINNAM"]
    [Tj "LC"]
-   {T "A15" 140 180}
-   {T "A14" 140 160}
-   {T "A13" 140 140}
-   {T "A12" 140 120}
-   {T "A11" 140 100}
-   {T "A10" 140 80}
+   {T "A15" 140 220}
+   {T "A14" 140 200}
+   {T "A13" 140 180}
+   {T "A12" 140 160}
+   {T "A11" 140 140}
+   {T "A10" 140 120}
+   {T "PHI2" 140 100}
+   {T "RW" 140 80}
    {T "SIDCS'" 140 60}
    {T "ROMCE'" 140 40}
    {T "ACIACS'" 140 20}
    [Tj "RC"]
-   {T "LCDCS'" 270 20}
+   {T "LCDWR'" 270 20}
    [Ly "DEVICE"]
    [Tj "CT"]
    {T "G16V8S" 205 -10}
@@ -111,7 +119,7 @@
    {EX
     [Ly "ATTR2"]
     [Ts 12][Tj "CT"][Tr 0][Tm "N"]
-    {At PLD D:\DOCUMENTS\ARDUINO\ASSEMBLY\BE6502-BUILD\GAL\BE6502DEC_CUPL 205 200}
+    {At PLD D:\DOCUMENTS\ARDUINO\ASSEMBLY\BE6502-BUILD\GAL\BE6502DEC_CUPL 205 240}
    }
   }
  }
@@ -133,13 +141,17 @@
    }
    {N A10
    }
+   {N PHI2
+   }
+   {N RW
+   }
    {N SIDCS'
    }
    {N ROMCE'
    }
    {N ACIACS'
    }
-   {N LCDCS'
+   {N LCDWR'
    }
   }
 

@@ -5,6 +5,57 @@ project repos, not here.
 
 ---
 
+## 2026-08-31 — GAL16V8 decoder, and the LCD back on the machine
+
+Replaced the two 74HC138s and the 74HC00 with a single GAL16V8, and put
+the HD44780 LCD back on the machine at its own address.
+
+**Decoder**
+
+- One GAL16V8 now generates every chip select: SID at both `$4800` and
+  `$D400`, ACIA at `$5000`, LCD write strobe at `$4C00`, and ROM `/CE`
+  with the `$D400` kilobyte punched out. Three chips down to one.
+- Inputs A15-A10 on pins 1-6, plus PHI2 on pin 7 and R/W on pin 8.
+  Outputs on pins 12-15. Four outputs and two inputs still spare.
+- Sources in `gal/`: `BE6502DEC.pld` for galasm, `BE6502DEC_CUPL.PLD`
+  for WinCUPL. They are different languages, not dialects — compiling
+  the wrong one is a dead end. Both verified against the same reference
+  model over address × PHI2 × R/W.
+
+**ACIA**
+
+`CS1B` (pin 3) moved to the GAL's ACIACS output; `CS0` (pin 2) stays
+tied to +5V. Both must be satisfied for the chip to respond.
+
+**LCD**
+
+- 74LS574 octal latch at `$4C00`, driven from the data bus. `Q0-Q3` to
+  LCD `D4-D7`, `Q4` to `RS`, `Q5` to `E`. `/OE` grounded, LCD `RW`
+  grounded — the driver never reads, so every wait is a fixed delay.
+- LS outputs only guarantee 2.4V high against the HD44780's 3.5V
+  threshold, so `Q0-Q5` carry pull-ups to +5V.
+- The strobe is **`LCDWR`, not a plain address decode**: the latch
+  clocks on a rising edge, and the address bus is only valid while PHI2
+  is high, so a transient through the `$4C00` window between cycles
+  would clock garbage in. Qualifying with PHI2 and write fixes that and
+  also stops it strobing on reads.
+
+**Verified**
+
+- Smoke tests play at both `$4800` and `$D400`, and several tunes run,
+  so the GAL reproduces the discrete logic exactly.
+- `LCDTest.bin` prints both lines.
+- Bring-up went through a hand-typed init sequence at `$4C00` from
+  WozMon first. Worth remembering as a technique: every address in the
+  1K window hits the latch, so WozMon's multi-byte write form gives
+  consecutive strobes, and typing speed exceeds every HD44780 minimum.
+  That isolates the wiring from the code completely.
+
+The one real fault was loose wiring, found only after the manual test
+proved the data path was sound.
+
+---
+
 ## 2026-08-29 — SID also at `$D400`
 
 Added a second 74HC138 and a 74HC00 so the SIDKick pico answers at its native
