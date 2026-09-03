@@ -7,9 +7,12 @@ software projects it runs live in their own repos (see [Built from](#built-from)
 what is documented here is the hardware: what is on the breadboards, how the
 address space is carved up, and what changed when.
 
-Start with **[MEMORY_MAP.md](MEMORY_MAP.md)** — memory map, the 74HC138 I/O
-decoder, SIDKick pico wiring, bring-up tests and 50 Hz timing.
+Start with **[MEMORY_MAP.md](MEMORY_MAP.md)** — memory map, the address
+decoding, SIDKick pico and LCD wiring, bring-up tests and 50 Hz timing.
 **[BUILD_LOG.md](BUILD_LOG.md)** is the dated record of hardware changes.
+**[PSID_RSID_AND_THE_KERNAL.md](PSID_RSID_AND_THE_KERNAL.md)** explains why
+half of HVSC will never run here — interrupt vectors, what a KERNAL actually
+is, and why this machine has firmware instead of one.
 
 ## The machine
 
