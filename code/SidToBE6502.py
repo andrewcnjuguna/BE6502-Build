@@ -1,5 +1,8 @@
-#!/usr/bin/env python
-"""
+r"""
+Run with  py -3  on this machine: plain `python` is MSYS2's and cannot
+open a D:\... script path. No shebang here on purpose - the py launcher
+honours them, and "/usr/bin/env python" points back at MSYS.
+
 Convert a .sid file (PSID/RSID, e.g. from the High Voltage SID Collection)
 into a binary that runs on the Ben Eater 6502.
 

@@ -1,6 +1,11 @@
-#!/usr/bin/env python3
-"""
+r"""
 Fetch tunes from HVSC by criteria - composer, path match, or both.
+
+RUN IT WITH  py -3  ON THIS MACHINE. Plain `python` is MSYS2's
+(C:\\msys64\\usr\\bin\\python.exe), which treats a D:\\... script path as
+relative and reports the file as missing. There is deliberately no
+"#!/usr/bin/env python3" line here either - the py launcher honours
+shebangs, and that one sends it straight back to the MSYS interpreter.
 
 rebuild_ec64sc_v2.py could not do this because its input is one curated
 web page: it scrapes the links that page happens to contain. There is no
@@ -18,19 +23,20 @@ the collection:
 Download that once, filter the paths, fetch only what matched.
 
 Examples
-    python hvsc_fetch.py --composer Hubbard_Rob
-    python hvsc_fetch.py --composer hubbard --runnable
-    python hvsc_fetch.py --match "Last_Ninja" --out ninja
-    python hvsc_fetch.py --composers H          (list composers under H)
-    python hvsc_fetch.py --composer Tel_Jeroen --runnable --convert
+    py -3 hvsc_fetch.py --composers H            list composers under H
+    py -3 hvsc_fetch.py --composer Hubbard_Rob --runnable
+    py -3 hvsc_fetch.py --match "Exploding_Fist" --dry-run
+    py -3 hvsc_fetch.py --composer Tel_Jeroen --runnable --convert
+          --out D:\C64\tunes --convert-out D:\C64\tunes\be6502
 
 --runnable keeps only tunes this machine can actually play: PSID, a
 non-zero play address, and small enough to sit under $4000 with the
 driver. Roughly half of HVSC fails that, so it is worth applying before
 downloading rather than after.
 
---convert runs SidToBE6502.py on each keeper, so one command gets you
-from a composer name to loadable binaries.
+--convert runs SidToBE6502.py on each keeper. Downloaded .sid files go
+to --out; the .bin/.asm/.sym they produce go to --convert-out, which
+defaults to a "converted" subdirectory of --out so the two never mix.
 
 Standard library only, like the script it grew out of.
 """
@@ -163,7 +169,10 @@ def main():
     ap.add_argument("--match", help="regex matched against the whole path")
     ap.add_argument("--composers", metavar="LETTER", nargs="?", const="",
                     help="list composers (optionally under one letter) and exit")
-    ap.add_argument("--out", default="hvsc_out", help="output directory")
+    ap.add_argument("--out", default="hvsc_out",
+                    help="where downloaded .sid files go (default hvsc_out)")
+    ap.add_argument("--convert-out", dest="convert_out",
+                    help="where converted .bin/.asm go (default <out>/converted)")
     ap.add_argument("--runnable", action="store_true",
                     help="keep only tunes this machine can play")
     ap.add_argument("--convert", action="store_true",
@@ -253,19 +262,30 @@ def main():
 
     if args.convert and kept:
         conv = Path(__file__).with_name("SidToBE6502.py")
-        print("\nconverting...")
+        cout = Path(args.convert_out) if args.convert_out else out / "converted"
+        cout.mkdir(parents=True, exist_ok=True)
+        print("\nconverting into %s" % cout.resolve())
         ok = 0
         for row in rows:
             if row["status"] != "downloaded":
                 continue
-            r = subprocess.run([sys.executable, str(conv), row["filename"]],
-                               cwd=str(out), stdout=subprocess.PIPE,
+            # absolute source path, but run with cwd=cout so every output
+            # the converter writes - .asm, .bin, .sym, its temp .dat - lands
+            # there instead of beside the .sid files
+            src = str((out / row["filename"]).resolve())
+            r = subprocess.run([sys.executable, str(conv), src],
+                               cwd=str(cout), stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
             text = r.stdout.decode("utf-8", "replace")
             line = next((l for l in text.splitlines() if "WozMon" in l), "")
             if r.returncode == 0:
                 ok += 1
                 print("   %-44s %s" % (row["filename"], " ".join(line.split()[1:])))
+            else:
+                why = next((l.split("PROBLEM", 1)[1].strip()
+                            for l in text.splitlines() if "PROBLEM" in l),
+                           text.strip().splitlines()[-1] if text.strip() else "?")
+                print("   %-44s FAILED  %s" % (row["filename"], why[:50]))
         print("converted %d of %d" % (ok, kept))
     return 0
 
