@@ -19,3 +19,9 @@ __pycache__/
 # HVSC index cache and fetch output
 Songlengths.md5
 hvsc_out/
+
+# WinCUPL byproducts - the .jed is the deliverable
+*.abs
+*.sim
+*.doc
+*.lst
