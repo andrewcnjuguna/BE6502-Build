@@ -42,6 +42,28 @@ Not done yet:
   needs ~1 MHz PHI2, so the clock has to be swapped between the two.
 - Six of the eight 74HC138 I/O slots are unassigned.
 
+## Tools
+
+In `code/`:
+
+| file | what it does |
+|---|---|
+| `LCDTest.asm` | standalone HD44780 bring-up at `$0400`. Load `400L`, run `400R`. |
+| `SidToBE6502.py` | turns a `.sid` file into a binary that runs here. Emits ACME source — tune blob, polled 50 Hz driver, LCD routines, title and author strings — and lets ACME assemble it. |
+| `hvsc_fetch.py` | pulls tunes from HVSC by composer or path match, filtering to what this machine can actually play. `--convert` runs the converter on each keeper. |
+
+```bash
+python hvsc_fetch.py --composer Hubbard_Rob --runnable --convert
+```
+
+These live here rather than in the SID player fork because they encode
+**this machine**: the SID at `$D400`, the LCD latch at `$4C00`, the VIA at
+`$6000`, and RAM ending at `$4000`. They would not do anything useful on
+another build.
+
+`PortSidToBE6502.py` is the exception and stays in the fork — it ports
+that repo's own ACME sources and would help anyone who clones it.
+
 ## Built from
 
 Upstream projects this machine runs, each with its own repo:

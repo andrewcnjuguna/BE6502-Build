@@ -11,3 +11,11 @@ Listing.txt
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# python bytecode
+__pycache__/
+*.pyc
+
+# HVSC index cache and fetch output
+Songlengths.md5
+hvsc_out/
