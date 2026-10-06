@@ -529,7 +529,8 @@ def convert(path, song=None, rate=None, skpico=True):
     end = load + len(data)
     if end > RAM_TOP:
         problems.append('tune occupies $%04X-$%04X, past the top of RAM ($%04X). '
-                        'A binary cannot be relocated.' % (load, end - 1, RAM_TOP))
+                        'Move it lower with sidreloc - hvsc_fetch.py does that by itself.'
+                        % (load, end - 1, RAM_TOP))
     if load < 0x0200:
         problems.append('tune loads at $%04X, over zero page and the stack.' % load)
     if sid2_problem(info):

@@ -40,6 +40,16 @@ its second SID if it has one - "6581 PAL", "8580 PAL 2SID $D420" - in
 the listing and in manifest.csv. The converted driver sets the SKpico
 to match, in RAM, so these are for reference.
 
+Tunes that load where this machine has no RAM - most famous ones sit at
+$8000-$FFFF - are relocated to $1000 with sidreloc (Linus Akesson's,
+source in sidreloc/, `make` there to build it). sidreloc plays the tune
+and the moved copy side by side for half an hour of music and only
+accepts the result if every SID write matches, so a move that succeeds
+sounds the same. The moved tune is what gets saved and converted; the
+HVSC original goes in <out>/original/, and manifest.csv says what moved
+where. Without sidreloc - or with --no-relocate - those tunes are skipped
+as before. 44 of Rob Hubbard's 47 too-high tunes moved this way.
+
 --convert runs SidToBE6502.py on each keeper. Downloaded .sid files go
 to --out; the .bin/.asm/.sym they produce go to --convert-out, which
 defaults to a "converted" subdirectory of --out so the two never mix.
@@ -51,10 +61,12 @@ import argparse
 import csv
 import os
 import re
+import shutil
 import ssl
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -75,6 +87,7 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BE6502-hvsc-fetch/1.0"
 
 DRIVER_ROOM = 220          # driver + SKpico setup (213); the LCD code is optional
 RAM_TOP = 0x4000
+RELOC_BASE = 0x1000        # where sidreloc moves a tune; $0300-$0FFF stays free
 
 
 def make_ssl_context():
@@ -137,32 +150,70 @@ def load_index(refresh=False):
     return paths
 
 
-def sid_verdict(data):
-    """Mirror the checks in SidToBE6502.py. Returns None if runnable,
-    otherwise a short reason."""
-    if len(data) < 0x20 or data[:4] not in (b"PSID", b"RSID"):
-        return "not a PSID/RSID"
-    be = lambda o: struct.unpack(">H", data[o:o + 2])[0]
-    if data[:4] == b"RSID":
-        return "RSID, needs the KERNAL"
-    off, load, play = be(6), be(8), be(0x0C)
+def tune_span(data):
+    """(load address, length) of the tune body, or None if truncated."""
+    off, load = struct.unpack(">HH", data[6:10])
     body = data[off:]
     if load == 0:
         if len(body) < 2:
-            return "truncated"
+            return None
         load = struct.unpack("<H", body[:2])[0]
         body = body[2:]
-    if play == 0:
-        return "play address 0, drives its own IRQ"
-    if load < 0x200:
-        return "loads over zero page/stack"
+    return load, len(body)
+
+
+def sid_verdict(data):
+    """Mirror the checks in SidToBE6502.py. Returns (reason, movable):
+    reason is None if the tune runs as it is, and movable is True when the
+    only thing wrong is where it loads - which sidreloc can fix."""
+    if len(data) < 0x20 or data[:4] not in (b"PSID", b"RSID"):
+        return "not a PSID/RSID", False
+    if data[:4] == b"RSID":
+        return "RSID, needs the KERNAL", False
+    span = tune_span(data)
+    if span is None:
+        return "truncated", False
+    load, length = span
+    if struct.unpack(">H", data[0x0C:0x0E])[0] == 0:
+        return "play address 0, drives its own IRQ", False
     problem = sid2_problem(header_info(data))
     if problem:
-        return problem.rstrip(".")
-    end = load + len(body)
-    if end + DRIVER_ROOM > RAM_TOP:
-        return "needs $%04X, past RAM" % (end + DRIVER_ROOM)
+        return problem.rstrip("."), False
+    end = load + length
+    if load >= 0x200 and end + DRIVER_ROOM <= RAM_TOP:
+        return None, False
+    why = ("loads over zero page/stack" if load < 0x200
+           else "needs $%04X, past RAM" % (end + DRIVER_ROOM))
+    if RELOC_BASE + length + DRIVER_ROOM > RAM_TOP:
+        return "%s, and at %d bytes too big to move under $4000" % (why, length), False
+    return why, True
+
+
+def find_sidreloc():
+    """$SIDRELOC, then sidreloc on the PATH, then the build in sidreloc/."""
+    here = Path(__file__).resolve().parent / "sidreloc"
+    for c in (os.environ.get("SIDRELOC"), shutil.which("sidreloc"),
+              here / "sidreloc", here / "sidreloc.exe"):
+        if c and Path(c).is_file() and os.access(str(c), os.X_OK):
+            return str(c)
     return None
+
+
+def relocate(data, tool):
+    """Move the tune to RELOC_BASE. Returns (new data, note) on success -
+    note is "" or a warning - and (None, why) when sidreloc gives up."""
+    with tempfile.TemporaryDirectory() as d:
+        src, dst = Path(d, "in.sid"), Path(d, "out.sid")
+        src.write_bytes(data)
+        r = subprocess.run([tool, "-p", "%02x" % (RELOC_BASE >> 8), str(src), str(dst)],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        lines = [l.strip() for l in r.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
+        last = lines[-1] if lines else "sidreloc exited %d" % r.returncode
+        if dst.exists() and r.returncode == 0:
+            return dst.read_bytes(), ""
+        if dst.exists() and "mismatching pitches" in last:
+            return dst.read_bytes(), "a few pitches off after the move"
+        return None, last.replace("sidreloc: ", "")
 
 
 def composers(paths, letter=None):
@@ -189,6 +240,8 @@ def main():
                     help="keep only tunes this machine can play")
     ap.add_argument("--convert", action="store_true",
                     help="run SidToBE6502.py on each keeper")
+    ap.add_argument("--no-relocate", dest="relocate", action="store_false",
+                    help="skip tunes that load too high instead of moving them with sidreloc")
     ap.add_argument("--limit", type=int, help="stop after N downloads")
     ap.add_argument("--refresh-index", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="list matches, download nothing")
@@ -225,7 +278,12 @@ def main():
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    rows, kept, skipped, failed = [], 0, 0, 0
+    rows, kept, skipped, failed, moved_n, unmoved = [], 0, 0, 0, 0, 0
+    sidreloc = find_sidreloc() if args.relocate else None
+    if args.relocate and not sidreloc:
+        print("sidreloc not found - tunes that load too high will be skipped.\n"
+              "Build it with `make` in %s, or set SIDRELOC.\n"
+              % (Path(__file__).resolve().parent / "sidreloc"))
 
     for i, path in enumerate(sel, 1):
         if args.limit and kept >= args.limit:
@@ -246,7 +304,22 @@ def main():
                          "filename": "", "url": ""})
             continue
 
-        reason = sid_verdict(data)
+        reason, movable = sid_verdict(data)
+        original, moved = None, ""
+        if reason and movable and args.relocate and not sidreloc:
+            unmoved += 1
+        if reason and movable and sidreloc:
+            print("[%3d/%3d] move %-46s %s - relocating to $%04X ..."
+                  % (i, len(sel), os.path.basename(path), reason, RELOC_BASE))
+            new, note = relocate(data, sidreloc)
+            if new is None:
+                reason = "%s; sidreloc: %s" % (reason, note)
+            else:
+                (a, n), (b, _) = tune_span(data), tune_span(new)
+                original, data = data, new
+                moved = "$%04X-$%04X to $%04X%s" % (a, a + n - 1, b, "; " + note if note else "")
+                moved_n += 1
+                reason, _ = sid_verdict(data)
         if args.runnable and reason:
             print("[%3d/%3d] skip %-46s %s" % (i, len(sel), os.path.basename(path), reason))
             skipped += 1
@@ -257,21 +330,29 @@ def main():
         name = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(path))
         dest = out / name
         dest.write_bytes(data)
+        if original:
+            (out / "original").mkdir(exist_ok=True)
+            (out / "original" / name).write_bytes(original)
         kept += 1
         tag = describe(header_info(data)) if data[:4] in (b"PSID", b"RSID") else ""
-        print("[%3d/%3d] OK   %-46s %s%s" % (i, len(sel), name, tag,
-                                             "" if not reason else "   (%s)" % reason))
+        print("[%3d/%3d] OK   %-46s %s%s%s" % (i, len(sel), name, tag,
+                                               "   (moved %s)" % moved if moved else "",
+                                               "" if not reason else "   (%s)" % reason))
         rows.append({"path": path, "status": "downloaded", "reason": reason or "",
-                     "chip": tag, "filename": name, "url": used})
+                     "chip": tag, "relocated": moved, "filename": name, "url": used})
         time.sleep(0.05)
 
     with (out / "manifest.csv").open("w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["path", "status", "reason", "chip", "filename", "url"],
-                           restval="")
+        w = csv.DictWriter(f, fieldnames=["path", "status", "reason", "chip", "relocated",
+                                          "filename", "url"], restval="")
         w.writeheader()
         w.writerows(rows)
 
-    print("\n%d downloaded, %d skipped, %d failed" % (kept, skipped, failed))
+    print("\n%d downloaded (%d relocated), %d skipped, %d failed"
+          % (kept, moved_n, skipped, failed))
+    if unmoved:
+        print("%d of the skipped would have run moved to $%04X - build sidreloc"
+              % (unmoved, RELOC_BASE))
     print("folder: %s" % out.resolve())
 
     if args.convert and kept:

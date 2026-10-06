@@ -25,3 +25,7 @@ hvsc_out/
 *.sim
 *.doc
 *.lst
+
+# sidreloc build output - the source in code/sidreloc/ is vendored, the binary is not
+code/sidreloc/*.o
+code/sidreloc/sidreloc
