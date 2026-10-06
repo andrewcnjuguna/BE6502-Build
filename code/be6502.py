@@ -4,10 +4,18 @@ the Windows machine, for the Mac.
 
     python3 be6502.py term                       talk to WozMon
     python3 be6502.py load SKConfig.bin 400      load at $0400
-    python3 be6502.py load SKConfig.bin 400 --run       ...then 400R
+    python3 be6502.py load SKConfig.bin 400 --run       ...then run it
     python3 be6502.py load SKConfig.bin 400 --verify    ...read it back first
 
-In the terminal, Ctrl-] quits.
+--run starts the program at BE6502_START from the .sym file beside the
+.bin, which is where a converted tune's driver begins - NOT the load
+address, where the tune data starts and the first byte is often $00, a
+BRK that crashes the machine. With no .sym it runs from the load address
+(right for SKConfig); --run ADDR gives the address outright.
+
+In the terminal, Ctrl-] quits. The port is opened exclusively: a second
+copy - or anything else - gets "port busy" instead of quietly sharing it
+and each seeing half the bytes, which looks exactly like a hung machine.
 
 Timing is the same as the TeraTerm setup, and both delays matter:
 
@@ -108,6 +116,16 @@ def terminal(s):
         print()
 
 
+def entry_point(path, addr):
+    """BE6502_START from the ACME symbol list beside the .bin, if any."""
+    sym = os.path.splitext(path)[0] + ".sym"
+    if os.path.exists(sym):
+        m = re.search(r"^\s*BE6502_START\s*=\s*\$([0-9a-fA-F]+)", open(sym).read(), re.M)
+        if m:
+            return int(m.group(1), 16), os.path.basename(sym)
+    return addr, None
+
+
 def load(s, path, addr, verify, run):
     data = open(path, "rb").read()
     end = addr + len(data)
@@ -143,7 +161,14 @@ def load(s, path, addr, verify, run):
         print("verified, all %d bytes match" % len(data))
 
     if run:
-        type_line(s, "%XR\r" % addr)
+        if run == "auto":
+            start, sym = entry_point(path, addr)
+            print("running at $%04X (%s)" % (start, "BE6502_START in " + sym if sym
+                                               else "the load address - no .sym"))
+        else:
+            start = int(run, 16)
+            print("running at $%04X" % start)
+        type_line(s, "%XR\r" % start)
 
 
 def main():
@@ -156,11 +181,16 @@ def main():
     lp.add_argument("file")
     lp.add_argument("addr", help="load address in hex, e.g. 400")
     lp.add_argument("--verify", action="store_true", help="read it back before going on")
-    lp.add_argument("--run", action="store_true", help="run it, then open the terminal")
+    lp.add_argument("--run", nargs="?", const="auto", metavar="ADDR",
+                    help="run it - at BE6502_START from the .sym, or ADDR - then open the terminal")
     args = ap.parse_args()
 
-    s = serial.Serial(args.port or find_port(), BAUD, timeout=0.05,
-                      rtscts=False, dsrdtr=False, xonxoff=False)
+    port = args.port or find_port()
+    try:
+        s = serial.Serial(port, BAUD, timeout=0.05, rtscts=False, dsrdtr=False,
+                          xonxoff=False, exclusive=True)
+    except serial.SerialException as e:
+        sys.exit("%s is busy - is another terminal or be6502.py still open?\n(%s)" % (port, e))
     time.sleep(0.2)
     if args.cmd == "load":
         load(s, args.file, int(args.addr, 16), args.verify, args.run)
