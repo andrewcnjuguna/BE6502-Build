@@ -291,14 +291,38 @@ PCB, **A5** and **A8/IO**, and config byte 10 picks which address SID #2 takes
 |---|---|---|---|
 | 0 | `$D400`, with #1 | — | not a second SID |
 | 1 | `$D420` | A5 | **A5 wire** |
-| 2 | `$D500` | A8 | A8 wire |
-| 3 | `$D520` | A5 + A8 | both |
-| 4 / 5 | `$DE00` / `$DF00` | IO, active low | needs a GAL output and a ROM hole |
+| 2 | `$D500` | A8 | not here: the A8/IO pad carries FM select |
+| 3 | `$D520` | A5 + A8 | not here, as above |
+| 4 / 5 | IO pad, active low | IO | **FM**: GAL pin 16, `$5400-$57FF` |
 
-The GAL's `/SIDCS` already covers `$D400-$D7FF`, so settings 1-3 need only the
-pad wires, no logic. A pad that is selected but unwired floats (the firmware
+The GAL's `/SIDCS` already covers `$D400-$D7FF`, so setting 1 needs only the
+A5 wire, no logic. A pad that is selected but unwired floats (the firmware
 pulls up A8 but not A5), and SID #1 writes leak into SID #2 — set byte 10 only
-for pads that are wired. `WIRED_PADS` in `SidToBE6502.py` records which are. **Pin 28 (+12V) is not needed** and pin 27
+for pads that are wired. `WIRED_PADS` in `SidToBE6502.py` records which are.
+
+### FM: the SKpico's OPL2
+
+The firmware also emulates a YM3812 (OPL2, MAME's `fmopl.c`), presented as the
+C64's SFX Sound Expander in place of SID #2: config byte 8 = 4 (FM with the
+fake status read AdLib detection wants) or 5, byte 10 = 5 (the IO pad). An
+access with the **A8/IO pad low and `/CS` high** goes to the OPL2, provided
+the **A5 pad is high and A0-A3 are low**; **A4 picks the port**.
+
+GAL rev 02 drives the A8/IO pad from pin 16, low across `$5400-$57FF`, and the
+A5 pad is already CPU A5 for the `$D420` second SID, so:
+
+| address | port |
+|---|---|
+| `$5420` | OPL2 register address |
+| `$5430` | OPL2 data |
+
+Mirrors repeat through the 1K wherever A5 is set and A0-A3 clear. FM and a
+second SID are alternatives — byte 8 picks one — and the same A5 wire serves
+both. `FMTest.asm` plays one tone through the ports.
+
+**Wiring:** GAL pin 16 → SKpico A8/IO pad. Program the GAL from
+`BE6502DEC_CUPL.PLD` rev 02 first; the committed `.jed` is rev 01 until it is
+rebuilt in WinCUPL. **Pin 28 (+12V) is not needed** and pin 27
 audio out is inert unless you close the "L" solder jumper — don't. Audio comes
 off the `GND-L-GND-R` line-out header on the PCB edge, into powered speakers.
 Do not power the Pico from USB while it is powered from the breadboard.

@@ -29,7 +29,7 @@ for stmt in text.split(';'):
     py = py.replace('&', '*').replace('#', '+')              # AND -> *, OR -> +
     eqs[name] = py
 
-need = ['SIDCS', 'LCDWR', 'ACIACS', 'ROMCE']
+need = ['SIDCS', 'LCDWR', 'ACIACS', 'ROMCE', 'FMSEL']
 missing = [n for n in need if n not in eqs]
 if missing:
     sys.exit('could not parse equations for: %s' % ', '.join(missing))
@@ -49,7 +49,8 @@ def ref(a, phi2=1, rw=0):
     lcd  = (0x4C00 <= a <= 0x4FFF) and phi2 == 1 and rw == 0
     acia = 0x5000 <= a <= 0x53FF
     rom  = a >= 0x8000 and not (0xD400 <= a <= 0xD7FF)
-    return tuple(0 if x else 1 for x in (sid, lcd, acia, rom))
+    fm   = 0x5400 <= a <= 0x57FF
+    return tuple(0 if x else 1 for x in (sid, lcd, acia, rom, fm))
 
 bad = [(a,p,r) for a in range(0x10000) for p in (0,1) for r in (0,1)
        if cupl(a,p,r) != ref(a,p,r)]

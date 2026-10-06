@@ -27,9 +27,11 @@
 ;
 ; Menu - each change is applied in RAM only:
 ;   1      SID #1 type     0 6581, 1 8580, 2 8580 digiboost
-;   2      SID #2 type     0-2 as above, 3 none
-;   3      SID #2 address  0 $D400, 1 $D420 (A5), 2 $D500 (A8),
-;                          3 $D520 (A5+A8) - the pads must be wired
+;   2      SID #2 type     0-2 as above, 3 none, 4 FM (OPL2, with
+;                          the fake status AdLib detection wants), 5 FM
+;   3      SID #2 address  0 $D400, 1 $D420 (A5), 2/3 $D500/$D520 (A8 -
+;                          not here: the A8/IO pad carries FM select),
+;                          4/5 IO pad - for FM use 5: OPL2 at $5420/$5430
 ;   4      clock           0 PAL, 1 NTSC, 2 old NTSC
 ;   d      dump again
 ;   s      save what is live now to flash (asks for y)
@@ -540,12 +542,12 @@ HexDigits   .byte "0123456789ABCDEF"
 
 ; menu fields 1-4: config byte, first digit not allowed, question
 FieldIdx    .byte CFG_SID1_TYPE, CFG_SID2_TYPE, CFG_SID2_ADDRESS, CFG_CLOCKSPEED
-FieldTop    .byte '3', '4', '4', '3'
+FieldTop    .byte '3', '6', '6', '3'
 AskLo       .byte <Ask1, <Ask2, <Ask3, <Ask4
 AskHi       .byte >Ask1, >Ask2, >Ask3, >Ask4
 Ask1        .byte "SID #1 type - 0 6581, 1 8580, 2 8580 digiboost: ",0
-Ask2        .byte "SID #2 type - 0 6581, 1 8580, 2 8580 digiboost, 3 none: ",0
-Ask3        .byte "SID #2 address - 0 $D400, 1 $D420 (A5), 2 $D500 (A8), 3 $D520 (A5+A8): ",0
+Ask2        .byte "SID #2 type - 0 6581, 1 8580, 2 8580 digiboost, 3 none, 4/5 FM: ",0
+Ask3        .byte "SID #2 address - 0 $D400, 1 $D420 (A5), 4/5 IO pad (FM: 5): ",0
 Ask4        .byte "clock - 0 PAL, 1 NTSC, 2 old NTSC: ",0
 MsgUnchanged .byte "not changed",13,10,0
 
@@ -569,7 +571,7 @@ FldSid1     .byte "SID #1 type    [0]  |"
 FldSid2     .byte "SID #2 type    [8]  |"
             .byte "                     0-2 as #1, 3 none, 4-5 FM",13,10,0
 FldAddr     .byte "SID #2 address [10] |"
-            .byte "                     0 $D400, 1 $D420 (A5 pad), 2 $D500 (A8), 3 $D520",13,10,0
+            .byte "                     0 $D400, 1 $D420 (A5 pad), 5 IO pad = FM at $5420",13,10,0
 FldClock    .byte "clock          [59] |"
             .byte "                     0 PAL, 1 NTSC, 2 old NTSC: pitch comes from this",13,10,0
 

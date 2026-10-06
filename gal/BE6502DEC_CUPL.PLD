@@ -1,7 +1,7 @@
 Name       BE6502DEC ;
 PartNo     01 ;
 Date       2026-08-30 ;
-Revision   01 ;
+Revision   02 ;
 Designer   andrewcnjuguna ;
 Company    BE6502 ;
 Assembly   None ;
@@ -15,6 +15,7 @@ Device     g16v8 ;
      $4800-$4BFF  SID / SIDKick pico   (kept, existing software works)
      $4C00-$4FFF  LCD latch (74LS574)
      $5000-$53FF  W65C51 ACIA
+     $5400-$57FF  FM select, to the SKpico's A8/IO pad (rev 02)
      $D400-$D7FF  SID again at the native C64 address
      ROM enabled for $8000-$FFFF EXCEPT the $D400 kilobyte
 
@@ -40,10 +41,18 @@ PIN 12 = !SIDCS ;
 PIN 13 = !ROMCE ;
 PIN 14 = !ACIACS ;
 PIN 15 = !LCDWR ;
+PIN 16 = !FMSEL ;
 
 /* $D400 = 1101 0100 ....    $4800 = 0100 1000 .... */
 SIDCS  = ( A15 &  A14 & !A13 &  A12 & !A11 &  A10)
        # (!A15 &  A14 & !A13 & !A12 &  A11 & !A10) ;
+
+/* $5400 = 0101 01.. ....  to the SKpico's A8/IO pad. With SID #2 set to
+   FM at the IO address (config byte 8 = 4, byte 10 = 5) the SKpico takes
+   the pad low with its /CS high as an OPL2 access. Its A5 pad - wired to
+   CPU A5 for the $D420 second SID - must be high and A0-A3 low; A4 picks
+   the port: $5420 OPL2 address, $5430 OPL2 data. Address-only. */
+FMSEL  = !A15 &  A14 & !A13 &  A12 & !A11 &  A10 ;
 
 /* $4C00 = 0100 1100 ....  qualified with PHI2 and WRITE.
    The 74LS574 clocks on a RISING edge, so this must go low during the

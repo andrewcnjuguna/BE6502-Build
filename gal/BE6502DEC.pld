@@ -2,7 +2,7 @@ GAL16V8
 BE6502DEC
 
 A15  A14  A13  A12  A11  A10  PHI2 RW   NC   GND
-NC   SIDCS ROMCE ACIACS LCDWR NC  NC   NC   NC   VCC
+NC   SIDCS ROMCE ACIACS LCDWR FMSEL NC  NC   NC   VCC
 
 ; ----------------------------------------------------------------------
 ; Ben Eater 6502 address decoder - replaces both 74HC138s and the 74HC00.
@@ -12,11 +12,12 @@ NC   SIDCS ROMCE ACIACS LCDWR NC  NC   NC   NC   VCC
 ; $4800-$4BFF  SID / SIDKick pico   (kept, so existing software works)
 ; $4C00-$4FFF  LCD latch write strobe
 ; $5000-$53FF  W65C51 ACIA
+; $5400-$57FF  FM select - the SKpico's OPL2, on its A8/IO pad
 ; $D400-$D7FF  SID again, native C64 address, so .sid files run unpatched
 ; ROM enabled for $8000-$FFFF EXCEPT the $D400 kilobyte
 ;
 ; RW is the 6502's R/W line: high = read, low = write.
-; Still free: $4000-$47FF and $5400-$5FFF, plus four unused outputs.
+; Still free: $4000-$47FF and $5800-$5FFF, plus three unused outputs.
 ; ----------------------------------------------------------------------
 
 ; $D400 = 1101 0100 ....   A15 A14 /A13 A12 /A11 A10
@@ -26,6 +27,14 @@ NC   SIDCS ROMCE ACIACS LCDWR NC  NC   NC   NC   VCC
 
 ; $5000 = 0101 0000 ....  /A15 A14 /A13 A12 /A11 /A10
 /ACIACS = /A15 *  A14 * /A13 *  A12 * /A11 * /A10
+
+; $5400 = 0101 01.. ....  to the SKpico's A8/IO pad. With SID #2 set to FM
+; at the IO address (config byte 8 = 4, byte 10 = 5) the SKpico takes the
+; pad going low with its /CS high as an access to its OPL2. Its A5 pad -
+; wired to CPU A5 already, for the $D420 second SID - must be high and
+; A0-A3 low, and A4 picks the port: $5420 OPL2 address, $5430 OPL2 data.
+; Address-only, like /SIDCS: the SKpico samples the bus itself.
+/FMSEL  = /A15 *  A14 * /A13 *  A12 * /A11 *  A10
 
 ; $4C00 = 0100 1100 ....  qualified with PHI2 and WRITE.
 ; The 74LS574 clocks on a RISING edge, so this must go low during the
@@ -48,7 +57,7 @@ DESCRIPTION
 
 Five product terms is the widest equation here; a GAL16V8 gives eight per
 output, so there is room to add selects as the machine grows. Eight of the ten
-available inputs are used, and four of the eight outputs.
+available inputs are used, and five of the eight outputs.
 
 Pin 1 and pin 11 are inputs, which puts the part in simple mode. Note pins 15
 and 16 have no feedback path in that mode - not needed here, but it matters if

@@ -1,7 +1,7 @@
 """Walk all 65536 addresses (x PHI2 x R/W) and compare the GAL
 sum-of-products against a plain 'is this address in the range' model.
 
-SIDCS, ACIACS and ROMCE are address-only. LCDWR is additionally
+SIDCS, ACIACS, FMSEL and ROMCE are address-only. LCDWR is additionally
 qualified with PHI2 and write, because the 74LS574 needs a clean edge.
 """
 
@@ -15,16 +15,18 @@ def gal(a, phi2, rw):
     lcdwr = n(A15) and A14 and n(A13) and n(A12) and A11 and A10 and phi2 and n(rw)
     rom = (A15 and n(A14)) or (A15 and A13) or (A15 and n(A12)) \
        or (A15 and A11) or (A15 and n(A10))
-    return tuple(0 if x else 1 for x in (sid, lcdwr, acia, rom))
+    fm = n(A15) and A14 and n(A13) and A12 and n(A11) and A10
+    return tuple(0 if x else 1 for x in (sid, lcdwr, acia, rom, fm))
 
 def ref(a, phi2, rw):
     sid   = (0x4800 <= a <= 0x4BFF) or (0xD400 <= a <= 0xD7FF)
     lcdwr = (0x4C00 <= a <= 0x4FFF) and phi2 == 1 and rw == 0
     acia  = 0x5000 <= a <= 0x53FF
     rom   = a >= 0x8000 and not (0xD400 <= a <= 0xD7FF)
-    return tuple(0 if x else 1 for x in (sid, lcdwr, acia, rom))
+    fm    = 0x5400 <= a <= 0x57FF
+    return tuple(0 if x else 1 for x in (sid, lcdwr, acia, rom, fm))
 
-NAMES = ('SID /CS', 'LCD /WR', 'ACIA /CS', 'ROM /CE')
+NAMES = ('SID /CS', 'LCD /WR', 'ACIA /CS', 'ROM /CE', 'FM /SEL')
 
 bad = [(a, p, r) for a in range(0x10000) for p in (0, 1) for r in (0, 1)
        if gal(a, p, r) != ref(a, p, r)]

@@ -23,7 +23,7 @@ is, and why this machine has firmware instead of one.
 | RAM | 62256 SRAM, 16K decoded at `$0000-$3FFF` |
 | ROM | 28C256 EEPROM, 32K at `$8000-$FFFF`, WozMon at `$F700` |
 | I/O decode | 74HC138, 8 × 1K slots across `$4000-$5FFF` |
-| Sound | SIDKick pico 0.2 DAC at `$4800` (74HC138 Y2) |
+| Sound | SIDKick pico 0.2 DAC at `$4800` and `$D400`, second SID at `$D420`, OPL2 FM at `$5420`/`$5430` (GAL rev 02) |
 | Serial | W65C51 ACIA at `$5000` |
 | Timers / ports | 6522 VIA at `$6000` |
 | Video | Worlds Worst Video Card, 100×64 at `$2000`, 256 colour as BBGGGRRR (blue in the top bits — tested, not RRRGGGBB) |
@@ -52,6 +52,7 @@ In `code/`:
 | file | what it does |
 |---|---|
 | `LCDTest.asm` | standalone HD44780 bring-up at `$0400`. Load `400L`, run `400R`. |
+| `FMTest.asm` | OPL2 smoke test: one FM tone through `$5420`/`$5430` for two seconds. Needs GAL rev 02 and SID #2 set to FM. Load `400L`, run `400R`. |
 | `SKConfig.asm` | reads and sets the SIDKick pico's configuration over serial — the job the C64's `SYS 54301` menu does: SID #1 and #2 chip, SID #2 address, PAL/NTSC. Changes are RAM-only until `s` saves them. Load `400L`, run `400R`. |
 | `be6502.py` | serial terminal and `.bin` loader for the Mac, with TeraTerm's timing: 1 ms per byte for the Fast Binary Load, 30 ms per typed character for WozMon. `load SKConfig.bin 400 --run`, or `term`. Needs pyserial. |
 | `SidToBE6502.py` | turns a `.sid` file into a binary that runs here. Emits ACME source — tune blob, polled 50/60 Hz driver, LCD routines, title and author strings — and lets ACME assemble it. Reports the chip, clock and second SID the tune was written for, and the driver sets the SKpico to match in RAM before init (`--no-skpico` to leave it alone). CIA-timed tunes are run in py65 to measure their call rate — `pip install py65`, or it guesses 60 Hz. py65 also finds memory a tune reads before writing, which a C64 would have zeroed, and the driver clears it before init. |
