@@ -3,9 +3,15 @@ Serial terminal and binary loader for the BE6502 - what TeraTerm does on
 the Windows machine, for the Mac.
 
     python3 be6502.py term                       talk to WozMon
+    python3 be6502.py load BE6502_Thrust.bin --run    address from its .asm
     python3 be6502.py load SKConfig.bin 400      load at $0400
     python3 be6502.py load SKConfig.bin 400 --run       ...then run it
     python3 be6502.py load SKConfig.bin 400 --verify    ...read it back first
+
+The load address can be left out when an ACME .asm sits beside the .bin
+(every converted tune has one): it is the "* = $xxxx" line. Given one that
+disagrees, the load refuses - Thrust loads at $0800, and loaded at $1000
+it was silent.
 
 --run starts the program at BE6502_START from the .sym file beside the
 .bin, which is where a converted tune's driver begins - NOT the load
@@ -116,6 +122,16 @@ def terminal(s):
         print()
 
 
+def origin(path):
+    """The '* = $xxxx' origin from the ACME source beside the .bin, if any."""
+    asm = os.path.splitext(path)[0] + ".asm"
+    if os.path.exists(asm):
+        m = re.search(r"^\*\s*=\s*\$([0-9a-fA-F]+)", open(asm, errors="replace").read(), re.M)
+        if m:
+            return int(m.group(1), 16)
+    return None
+
+
 def entry_point(path, addr):
     """BE6502_START from the ACME symbol list beside the .bin, if any."""
     sym = os.path.splitext(path)[0] + ".sym"
@@ -179,7 +195,8 @@ def main():
     sub.add_parser("term", help="interactive terminal")
     lp = sub.add_parser("load", help="send a .bin with the Fast Binary Load")
     lp.add_argument("file")
-    lp.add_argument("addr", help="load address in hex, e.g. 400")
+    lp.add_argument("addr", nargs="?",
+                    help="load address in hex, e.g. 400 - optional when a .asm sits beside it")
     lp.add_argument("--verify", action="store_true", help="read it back before going on")
     lp.add_argument("--run", nargs="?", const="auto", metavar="ADDR",
                     help="run it - at BE6502_START from the .sym, or ADDR - then open the terminal")
@@ -193,7 +210,17 @@ def main():
         sys.exit("%s is busy - is another terminal or be6502.py still open?\n(%s)" % (port, e))
     time.sleep(0.2)
     if args.cmd == "load":
-        load(s, args.file, int(args.addr, 16), args.verify, args.run)
+        org = origin(args.file)
+        if args.addr is None:
+            if org is None:
+                sys.exit("no load address given and no .asm beside %s to read it from" % args.file)
+            addr = org
+        else:
+            addr = int(args.addr, 16)
+            if org is not None and org != addr:
+                sys.exit("%s is built for $%04X, not $%04X - leave the address out"
+                         % (os.path.basename(args.file), org, addr))
+        load(s, args.file, addr, args.verify, args.run)
         if not args.run:
             return 0
     terminal(s)
