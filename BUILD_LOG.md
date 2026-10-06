@@ -5,6 +5,31 @@ project repos, not here.
 
 ---
 
+## 2026-10-06 — FM: the SKpico's OPL2 at `$5420`
+
+The SIDKick pico also emulates a YM3812 (OPL2), presented as the C64's SFX
+Sound Expander in place of its second SID. Wired up with one GAL output and
+one wire.
+
+- **GAL rev 02.** New output on pin 16, `/FMSEL`, low across the free
+  `$5400-$57FF` slot. Programmed from `BE6502DEC_CUPL.PLD` rev 02.
+- **Wire:** GAL pin 16 → SKpico **A8/IO** pad. The A5/A6 pad stays on CPU A5,
+  which the OPL2 decode also needs high, so the ports land at **`$5420`**
+  (register address) and **`$5430`** (data).
+- **Config**, RAM only, with SKConfig: SID #2 type 4 (FM), address 5 (IO
+  pad). FM and a second SID are alternatives; config byte 8 picks one.
+- `$D500` second-SID tunes are now out of reach: the A8/IO pad carries FM
+  select instead of CPU A8.
+
+**Verified**
+
+- `FMTest.asm` played the AdLib guide's test note for two seconds.
+- The first attempt was silent: the wire was on the wrong pad.
+- Reads of `$5420` return the floating bus (`0D`), not the fake OPL status
+  the firmware source suggests for type 4. Playback does not need it.
+
+---
+
 ## 2026-10-06 — A5 to the SKpico: a second SID at `$D420`
 
 One wire: CPU **A5** to the SIDKick pico's **A5 pad**. That lets the SKpico
