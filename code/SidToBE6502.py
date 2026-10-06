@@ -513,7 +513,7 @@ def convert(path, song=None, rate=None, skpico=True):
         else:
             how = (' (a guess: install py65 to measure it)'
                    if not _have_py65() else
-                   ' (a guess: the tune never set CIA timer A)')
+                   ' (the tune keeps the default CIA timer, ~60 Hz)')
     if rate is None:
         rate = 60.0 if cia or info['clock'] == 'NTSC' else 50.0
     print('  %-12s song %d of %d, %s-timed, calling play at %g Hz%s'
