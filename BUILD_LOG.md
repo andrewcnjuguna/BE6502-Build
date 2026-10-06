@@ -5,6 +5,38 @@ project repos, not here.
 
 ---
 
+## 2026-10-06 — A5 to the SKpico: a second SID at `$D420`
+
+One wire: CPU **A5** to the SIDKick pico's **A5 pad**. That lets the SKpico
+tell `$D420` from `$D400`, so with SID #2 switched on (config byte 8 = chip,
+byte 10 = 1) it emulates two SIDs and 2SID tunes play in stereo.
+
+- No logic change. The GAL's `/SIDCS` already covers `$D400-$D7FF`; until now
+  the SKpico just could not see A5, so `$D420` landed on SID #1's voice 1 and
+  2SID tunes came out garbled.
+- With SID #2 on, every 32-byte block with A5 set is SID #2 — `$4820` as well
+  as `$D420`. Nothing written for this machine uses those.
+- `$D500` tunes would need A8 on the A8 pad the same way. Not fitted.
+
+**Verified**
+
+- With SID #2 at `$D420` (set in RAM with SKConfig), voice 3 read back
+  separately: noise on `$D41B` (`BE 74 A1`), a held oscillator on `$D43B`
+  (`00 00 00`). Without the wire both would read the same chip.
+- R-Type's 2SID cover played with all six voices in stereo, starting from
+  SID #2 off: the converted tune's driver switched it on itself.
+- Its speed was wrong at first — a CIA-timed tune, guessed at 60 Hz. Its
+  init sets CIA timer A to `$2663`, 100.25 Hz; the converter now measures
+  that, and the tempo matched a recording.
+
+**Noticed**
+
+The serial link dropped twice during testing and the machine looked hung;
+the second time the PL2303 vanished from USB altogether. Check the adapter
+before suspecting the machine.
+
+---
+
 ## 2026-08-31 — GAL16V8 decoder, and the LCD back on the machine
 
 Replaced the two 74HC138s and the 74HC00 with a single GAL16V8, and put

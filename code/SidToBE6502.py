@@ -41,8 +41,11 @@ Usage:
   song     0-based song index. Default is the file's own start song.
   rate_hz  override the call rate. Default comes from the PSID speed
            field: the frame rate for a vsync song, 50 Hz PAL or 60 Hz
-           NTSC, and 60 Hz for a CIA-timed one (a guess - CIA tunes set
-           their own period, which the header does not record).
+           NTSC. A CIA-timed song sets its own period in CIA 1 timer A,
+           which the header does not record, so init is run in a 6502
+           emulator to catch it (pip install py65). Without py65, or if
+           the tune never sets it, 60 Hz is a guess - and often wrong:
+           R-Type's 2SID cover wants 100 Hz.
 
 Output: BE6502_<name>[_songN].bin, plus the WozMon load and run addresses.
 """
@@ -335,6 +338,46 @@ lcddms2 dey
 """
 
 
+CIA_CLOCK = {'PAL': 985248, 'NTSC': 1022727}
+
+
+def cia_rate(data, load, init, play, song, clock):
+    """Run init, then play a few times if init did not do it, in py65 and
+    return (rate_hz, period) for whatever the tune programs into CIA 1
+    timer A - or None if py65 is missing or the timer is never set."""
+    try:
+        from py65.devices.mpu6502 import MPU
+        from py65.memory import ObservableMemory
+    except ImportError:
+        return None
+    mem = ObservableMemory()
+    mpu = MPU(memory=mem)
+    for i, b in enumerate(data):
+        mem[load + i] = b
+    latch = {}
+    mem.subscribe_to_write([0xDC04, 0xDC05], lambda a, v: latch.__setitem__(a, v))
+
+    def call(addr, a):
+        mpu.sp = 0xFD                        # RTS from addr lands on $FFF0
+        mem[0x1FE], mem[0x1FF] = 0xEF, 0xFF
+        mpu.a = mpu.x = mpu.y = a
+        mpu.pc = addr
+        for _ in range(200000):              # a raster wait never ends here
+            if mpu.pc == 0xFFF0:
+                return
+            mpu.step()
+
+    call(init, song)
+    for _ in range(4):
+        if len(latch) == 2:
+            break
+        call(play, 0)
+    period = latch.get(0xDC04, 0) | latch.get(0xDC05, 0) << 8
+    if len(latch) < 2 or period == 0:
+        return None
+    return CIA_CLOCK.get(clock, CIA_CLOCK['PAL']) / (period + 1.0), period
+
+
 def build_asm(datfile, org, init, play, song, rate, title, author, use_lcd, skcfg):
     n = int(round(1000000.0 / rate)) - 2       # VIA T1 free-run period is N+2
     if not 0 <= n <= 0xFFFF:
@@ -411,6 +454,14 @@ def build_asm(datfile, org, init, play, song, rate, title, author, use_lcd, skcf
     return '\n'.join(o) + '\n'
 
 
+def _have_py65():
+    try:
+        import py65  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def convert(path, song=None, rate=None, skpico=True):
     raw = io.open(path, 'rb').read()
     magic = raw[:4]
@@ -453,10 +504,20 @@ def convert(path, song=None, rate=None, skpico=True):
     song = (start - 1) if song is None else song   # header start song is 1-based
     song = max(0, min(song, nsongs - 1))
     cia = bool(speed >> song & 1) if song < 32 else False
+    how = ''
+    if rate is None and cia and play:
+        found = cia_rate(data, load, init, play, song, info['clock'])
+        if found:
+            rate = round(found[0], 2)
+            how = ' (init sets CIA timer A to $%04X)' % found[1]
+        else:
+            how = (' (a guess: install py65 to measure it)'
+                   if not _have_py65() else
+                   ' (a guess: the tune never set CIA timer A)')
     if rate is None:
         rate = 60.0 if cia or info['clock'] == 'NTSC' else 50.0
-    print('  %-12s song %d of %d, %s-timed, calling play at %g Hz'
-          % ('playback', song, nsongs, 'CIA' if cia else 'vsync', rate))
+    print('  %-12s song %d of %d, %s-timed, calling play at %g Hz%s'
+          % ('playback', song, nsongs, 'CIA' if cia else 'vsync', rate, how))
 
     problems = []
     if play == 0:
