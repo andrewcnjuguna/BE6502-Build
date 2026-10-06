@@ -52,6 +52,8 @@ In `code/`:
 | file | what it does |
 |---|---|
 | `LCDTest.asm` | standalone HD44780 bring-up at `$0400`. Load `400L`, run `400R`. |
+| `SKConfig.asm` | reads and sets the SIDKick pico's configuration over serial — the job the C64's `SYS 54301` menu does. Load `400L`, run `400R`. |
+| `be6502.py` | serial terminal and `.bin` loader for the Mac, with TeraTerm's timing: 1 ms per byte for the Fast Binary Load, 30 ms per typed character for WozMon. `load SKConfig.bin 400 --run`, or `term`. Needs pyserial. |
 | `SidToBE6502.py` | turns a `.sid` file into a binary that runs here. Emits ACME source — tune blob, polled 50 Hz driver, LCD routines, title and author strings — and lets ACME assemble it. |
 | `hvsc_fetch.py` | pulls tunes from HVSC by composer or path match, filtering to what this machine can actually play. `--convert` runs the converter on each keeper. |
 
