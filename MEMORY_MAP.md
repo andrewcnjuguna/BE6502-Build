@@ -113,6 +113,12 @@ Those 32 registers therefore repeat 32 times: `$4800`, `$4820`, `$4840` … all 
 the same register. `$4900` works too. Harmless, but nothing else can live in
 `$4800-$4BFF`.
 
+That stops being true once SID #2 is switched on. With CPU A5 on the SKpico's
+A5 pad and SID #2 at address setting 1, every 32-byte block with A5 set is
+SID #2: `$D420`, but also `$4820`, `$4860` … Likewise A8 for setting 2
+(`$D500`, `$4900`). Everything written for this machine uses `$4800-$481C`, so
+nothing existing moves.
+
 ### No PHI2 gating
 
 /CS is address-decode only, exactly like a C64's — the SID and the SIDKick pico
@@ -273,7 +279,26 @@ and the 14-pin header is pins 15-28. The empty corner marks the pin-1 end.
 | 15-22 | D0-D7 | data bus |
 | 25 | VCC | +5V |
 
-Leave 23, 24, 26, 27, 28 unconnected. **Pin 28 (+12V) is not needed** and pin 27
+Leave 23, 24, 26, 27, 28 unconnected.
+
+### Second SID
+
+The SKpico emulates two SIDs. It tells SID #2 apart by two extra pads on the
+PCB, **A5** and **A8/IO**, and config byte 10 picks which address SID #2 takes
+(from the firmware, `sidFlags[]` in `SKpico.c`):
+
+| byte 10 | SID #2 at | pads | here |
+|---|---|---|---|
+| 0 | `$D400`, with #1 | — | not a second SID |
+| 1 | `$D420` | A5 | **A5 wire** |
+| 2 | `$D500` | A8 | A8 wire |
+| 3 | `$D520` | A5 + A8 | both |
+| 4 / 5 | `$DE00` / `$DF00` | IO, active low | needs a GAL output and a ROM hole |
+
+The GAL's `/SIDCS` already covers `$D400-$D7FF`, so settings 1-3 need only the
+pad wires, no logic. A pad that is selected but unwired floats (the firmware
+pulls up A8 but not A5), and SID #1 writes leak into SID #2 — set byte 10 only
+for pads that are wired. `WIRED_PADS` in `SidToBE6502.py` records which are. **Pin 28 (+12V) is not needed** and pin 27
 audio out is inert unless you close the "L" solder jumper — don't. Audio comes
 off the `GND-L-GND-R` line-out header on the PCB edge, into powered speakers.
 Do not power the Pico from USB while it is powered from the breadboard.

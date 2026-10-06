@@ -30,9 +30,15 @@ Examples
           --out D:\C64\tunes --convert-out D:\C64\tunes\be6502
 
 --runnable keeps only tunes this machine can actually play: PSID, a
-non-zero play address, and small enough to sit under $4000 with the
-driver. Roughly half of HVSC fails that, so it is worth applying before
-downloading rather than after.
+non-zero play address, small enough to sit under $4000 with the driver,
+and for a 2SID tune a second SID the SKpico can be wired for (see
+WIRED_PADS in SidToBE6502.py). Roughly half of HVSC fails that, so it is
+worth applying before downloading rather than after.
+
+Each download is tagged with the chip and clock it was written for, and
+its second SID if it has one - "6581 PAL", "8580 PAL 2SID $D420" - in
+the listing and in manifest.csv. The converted driver sets the SKpico
+to match, in RAM, so these are for reference.
 
 --convert runs SidToBE6502.py on each keeper. Downloaded .sid files go
 to --out; the .bin/.asm/.sym they produce go to --convert-out, which
@@ -55,6 +61,9 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
+# the converter's own header checks, so the two cannot disagree
+from SidToBE6502 import header_info, describe, sid2_problem
+
 MIRRORS = [
     "https://hvsc.perff.dk",
     "https://hvsc.c64.org/download/C64Music",
@@ -64,7 +73,7 @@ INDEX_PATH = "/DOCUMENTS/Songlengths.md5"
 INDEX_CACHE = Path("Songlengths.md5")
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BE6502-hvsc-fetch/1.0"
 
-DRIVER_ROOM = 400          # driver + LCD code + strings, worst case
+DRIVER_ROOM = 220          # driver + SKpico setup (213); the LCD code is optional
 RAM_TOP = 0x4000
 
 
@@ -147,6 +156,9 @@ def sid_verdict(data):
         return "play address 0, drives its own IRQ"
     if load < 0x200:
         return "loads over zero page/stack"
+    problem = sid2_problem(header_info(data))
+    if problem:
+        return problem.rstrip(".")
     end = load + len(body)
     if end + DRIVER_ROOM > RAM_TOP:
         return "needs $%04X, past RAM" % (end + DRIVER_ROOM)
@@ -246,14 +258,16 @@ def main():
         dest = out / name
         dest.write_bytes(data)
         kept += 1
-        print("[%3d/%3d] OK   %s%s" % (i, len(sel), name,
-                                       "" if not reason else "   (%s)" % reason))
+        tag = describe(header_info(data)) if data[:4] in (b"PSID", b"RSID") else ""
+        print("[%3d/%3d] OK   %-46s %s%s" % (i, len(sel), name, tag,
+                                             "" if not reason else "   (%s)" % reason))
         rows.append({"path": path, "status": "downloaded", "reason": reason or "",
-                     "filename": name, "url": used})
+                     "chip": tag, "filename": name, "url": used})
         time.sleep(0.05)
 
     with (out / "manifest.csv").open("w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["path", "status", "reason", "filename", "url"])
+        w = csv.DictWriter(f, fieldnames=["path", "status", "reason", "chip", "filename", "url"],
+                           restval="")
         w.writeheader()
         w.writerows(rows)
 

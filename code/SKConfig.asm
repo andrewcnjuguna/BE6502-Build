@@ -18,15 +18,20 @@
 ;   write $1D <- $FF    apply it and save it to flash
 ;
 ; $FA and $FB written to $1D are commands too, so a config byte of
-; $FA or above cannot be stored. Store therefore writes only bytes
-; 0-10 and refuses if any of them is $FA or above. In config mode a
-; write to any other register ends it, so it is entered once per
-; exchange, and each exchange is one burst with nothing printed in
-; the middle.
+; $FA or above cannot be stored. Store writes bytes 0-59, through the
+; clock, and refuses if any of them is $FA or above. Bytes 52 and 53
+; are named checksums in the firmware but nothing checks them; they
+; go back as they were read. In config mode a write to any other
+; register ends it, so it is entered once per exchange, and each
+; exchange is one burst with nothing printed in the middle.
 ;
-; Menu:
+; Menu - each change is applied in RAM only:
+;   1      SID #1 type     0 6581, 1 8580, 2 8580 digiboost
+;   2      SID #2 type     0-2 as above, 3 none
+;   3      SID #2 address  0 $D400, 1 $D420 (A5), 2 $D500 (A8),
+;                          3 $D520 (A5+A8) - the pads must be wired
+;   4      clock           0 PAL, 1 NTSC, 2 old NTSC
 ;   d      dump again
-;   0 1 2  SID #1 type = 6581 / 8580 / 8580 digiboost, RAM only
 ;   s      save what is live now to flash (asks for y)
 ;   q      quit to WozMon
 ;
@@ -57,12 +62,13 @@ CFG_SID1_TYPE    = 0
 CFG_SID2_TYPE    = 8
 CFG_SID2_ADDRESS = 10
 CFG_CLOCKSPEED   = 59
-STORE_BYTES      = 11       ; bytes 0-10, through CFG_SID2_ADDRESS
+STORE_BYTES      = 60       ; bytes 0-59, through CFG_CLOCKSPEED
 
 ; zero page - clear of WozMon ($20-$2F) and the SD code ($A2+)
 STRP      = $30             ; and $31, string pointer
 TMP       = $32
 TMP2      = $33
+FIELD     = $34             ; menu field being changed, 0-3
 
  .org $400
 
@@ -85,13 +91,13 @@ Menu
     JSR CrLf
     PLA
 
-    CMP #'0'                ; digits first - the case fold below
+    CMP #'1'                ; digits first - the case fold below
     BCC MenuLetter          ; would mangle them
-    CMP #'3'
+    CMP #'5'
     BCS MenuLetter
     SEC
-    SBC #'0'
-    JMP SetType
+    SBC #'1'
+    JMP SetField
 
 MenuLetter
     AND #$DF                ; fold to upper case
@@ -116,18 +122,43 @@ Quit
 ; ---------------------------------------------------------------
 ; Menu actions. Both refuse unless the last read looked sane.
 ; ---------------------------------------------------------------
-SetType                     ; A = 0, 1 or 2
+SetField                    ; A = field 0-3, see the Field tables
+    STA FIELD
+    TAX
+    LDA AskHi,X
+    PHA
+    LDA AskLo,X
+    PLX
+    JSR Puts
+    JSR GetKey
+    PHA
+    JSR PutC                ; echo it
+    JSR CrLf
+    PLA
+    LDX FIELD
+    CMP #'0'
+    BCC SetBad
+    CMP FieldTop,X
+    BCS SetBad
+    SEC
+    SBC #'0'
     PHA
     JSR CanStore
     PLA
     BCC SetDone
-    STA Config+CFG_SID1_TYPE
+    LDX FIELD
+    LDY FieldIdx,X
+    STA Config,Y
     LDA #$FE                ; apply, RAM only
     JSR Store
     LDA #<MsgApplied
     LDX #>MsgApplied
     JSR Puts
     JMP ReadBack
+SetBad
+    LDA #<MsgUnchanged
+    LDX #>MsgUnchanged
+    JSR Puts
 SetDone
     JMP Menu
 
@@ -164,7 +195,7 @@ ReadBack                    ; a flash save stalls the chip for a moment
     JSR Dump
     JMP Menu
 
-; Carry set if bytes 0-10 can go back to the chip. Prints why not.
+; Carry set if bytes 0-59 can go back to the chip. Prints why not.
 CanStore
     JSR Silent
     BCC CanStore1
@@ -507,8 +538,20 @@ Drain3
 ; ---------------------------------------------------------------
 HexDigits   .byte "0123456789ABCDEF"
 
+; menu fields 1-4: config byte, first digit not allowed, question
+FieldIdx    .byte CFG_SID1_TYPE, CFG_SID2_TYPE, CFG_SID2_ADDRESS, CFG_CLOCKSPEED
+FieldTop    .byte '3', '4', '4', '3'
+AskLo       .byte <Ask1, <Ask2, <Ask3, <Ask4
+AskHi       .byte >Ask1, >Ask2, >Ask3, >Ask4
+Ask1        .byte "SID #1 type - 0 6581, 1 8580, 2 8580 digiboost: ",0
+Ask2        .byte "SID #2 type - 0 6581, 1 8580, 2 8580 digiboost, 3 none: ",0
+Ask3        .byte "SID #2 address - 0 $D400, 1 $D420 (A5), 2 $D500 (A8), 3 $D520 (A5+A8): ",0
+Ask4        .byte "clock - 0 PAL, 1 NTSC, 2 old NTSC: ",0
+MsgUnchanged .byte "not changed",13,10,0
+
 MsgBanner   .byte 13,10,"SIDKick pico configuration, via $481D-$481F",13,10,0
-MsgPrompt   .byte 13,10,"d dump, 0/1/2 SID #1 = 6581/8580/digiboost (RAM), s save to flash, q quit: ",0
+MsgPrompt   .byte 13,10,"1 SID #1 type, 2 SID #2 type, 3 SID #2 address, 4 clock (RAM only)",13,10
+            .byte "d dump, s save to flash, q quit: ",0
 MsgFirmware .byte 13,10,"firmware: ",0
 MsgApplied  .byte "applied, not saved: a power cycle undoes it",13,10,0
 MsgConfirm  .byte "Save what is live now to flash. Type y to confirm: ",0
@@ -516,7 +559,7 @@ MsgNotSaved .byte "not saved",13,10,0
 MsgSaved    .byte "saved",13,10,0
 MsgAnyKey   .byte "any key reads it back",13,10,0
 MsgNoAnswer .byte "Refusing: nothing answered the config read.",13,10,0
-MsgCommand  .byte "Refusing: a byte in 0-10 is $FA or above, a command on $1D.",13,10,0
+MsgCommand  .byte "Refusing: a byte in 0-59 is $FA or above, a command on $1D.",13,10,0
 MsgSilent   .byte 13,10,"Every byte the same: nothing is answering at $481D-$481F.",13,10
             .byte "Check the 1 MHz clock, A0-A4, and the SID /CS from the GAL.",13,10,0
 MsgDone     .byte 13,10,"done, back to WozMon",13,10,0
@@ -524,10 +567,11 @@ MsgDone     .byte 13,10,"done, back to WozMon",13,10,0
 FldSid1     .byte "SID #1 type    [0]  |"
             .byte "                     0 6581, 1 8580, 2 8580 digiboost",13,10,0
 FldSid2     .byte "SID #2 type    [8]  |"
-            .byte "                     3 none, 4-5 FM",13,10,0
-FldAddr     .byte "SID #2 address [10] |",0
+            .byte "                     0-2 as #1, 3 none, 4-5 FM",13,10,0
+FldAddr     .byte "SID #2 address [10] |"
+            .byte "                     0 $D400, 1 $D420 (A5 pad), 2 $D500 (A8), 3 $D520",13,10,0
 FldClock    .byte "clock          [59] |"
-            .byte "                     0 PAL, 1 NTSC: pitch comes from this, not PHI2",13,10,0
+            .byte "                     0 PAL, 1 NTSC, 2 old NTSC: pitch comes from this",13,10,0
 
 ; ---------------------------------------------------------------
 ; Buffers - not part of the binary's contents that matter, but kept
