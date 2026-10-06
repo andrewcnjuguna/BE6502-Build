@@ -7,6 +7,8 @@ the Windows machine, for the Mac.
     python3 be6502.py load SKConfig.bin 400      load at $0400
     python3 be6502.py load SKConfig.bin 400 --run       ...then run it
     python3 be6502.py load SKConfig.bin 400 --verify    ...read it back first
+    python3 be6502.py load BE6502_Rambo_First_Blood_Part_II_1.bin --screen rambo_screen.bin --run
+                                                 a picture at $2000 first, then the tune
 
 The load address can be left out when an ACME .asm sits beside the .bin
 (every converted tune has one): it is the "* = $xxxx" line. Given one that
@@ -18,6 +20,10 @@ it was silent.
 address, where the tune data starts and the first byte is often $00, a
 BRK that crashes the machine. With no .sym it runs from the load address
 (right for SKConfig); --run ADDR gives the address outright.
+
+--screen loads a picture made by img2be6502.py at $2000 before the
+program, and refuses up front if the program would land on $2000-$3FFF
+and overwrite it.
 
 In the terminal, Ctrl-] quits. The port is opened exclusively: a second
 copy - or anything else - gets "port busy" instead of quietly sharing it
@@ -214,6 +220,8 @@ def main():
     lp.add_argument("addr", nargs="?",
                     help="load address in hex, e.g. 400 - optional when a .asm sits beside it")
     lp.add_argument("--verify", action="store_true", help="read it back before going on")
+    lp.add_argument("--screen", metavar="PICTURE",
+                    help="load this 8 KB picture at $2000 first (from img2be6502.py)")
     lp.add_argument("--run", nargs="?", const="auto", metavar="ADDR",
                     help="run it - at BE6502_START from the .sym, or ADDR - then open the terminal")
     args = ap.parse_args()
@@ -236,6 +244,15 @@ def main():
             if org is not None and org != addr:
                 sys.exit("%s is built for $%04X, not $%04X - leave the address out"
                          % (os.path.basename(args.file), org, addr))
+        if args.screen:
+            last = addr + os.path.getsize(args.file) - 1
+            if addr <= 0x3FFF and last >= 0x2000:
+                sys.exit("%s occupies $%04X-$%04X, over the screen at $2000-$3FFF - the picture\n"
+                         "would be overwritten. Use a build that ends below $2000 (the _low ones)."
+                         % (os.path.basename(args.file), addr, last))
+            print("picture %s:" % os.path.basename(args.screen))
+            load(s, args.screen, 0x2000, False, None)
+            print("tune %s:" % os.path.basename(args.file))
         load(s, args.file, addr, args.verify, args.run)
         if not args.run:
             return 0
