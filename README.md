@@ -26,7 +26,7 @@ is, and why this machine has firmware instead of one.
 | Sound | SIDKick pico 0.2 DAC at `$4800` (74HC138 Y2) |
 | Serial | W65C51 ACIA at `$5000` |
 | Timers / ports | 6522 VIA at `$6000` |
-| Video | Worlds Worst Video Card, 100×64, RRRGGGBB 256 colour |
+| Video | Worlds Worst Video Card, 100×64 at `$2000`, 256 colour as BBGGGRRR (blue in the top bits — tested, not RRRGGGBB) |
 | Storage | SD card via shift-register fast interface on VIA ports A/B |
 
 ## State

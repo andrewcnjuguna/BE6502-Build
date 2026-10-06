@@ -27,7 +27,7 @@ $3FFF   |                                           |
         |   RAM   62256 SRAM   16K decoded          |
         |                                           |
         |     $2000-$3FFF  display  128x64          |
-        |                  (100x64 visible)         |
+        |                  (100x64 seen, BBGGGRRR)  |
         |     $1F00-$1FFF  SD demo audio buffer     |
         |     $0300-$1EFF  free program space       |
         |     $0200-$02FF  WozMon input buffer      |
