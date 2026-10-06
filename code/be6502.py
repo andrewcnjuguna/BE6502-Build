@@ -26,7 +26,11 @@ and each seeing half the bytes, which looks exactly like a hung machine.
 Timing is the same as the TeraTerm setup, and both delays matter:
 
   - The Fast Binary Load drops bytes sent back to back - the second byte
-    of a file went missing at full speed. 1 ms per byte is clean.
+    of a file went missing at full speed. 1 ms per byte, TeraTerm's
+    setting, is marginal from this Mac: a 6 KB load once lost 6 bytes.
+    So it sends at 2 ms, and after every load reads back the last 16
+    bytes - a dropped byte shifts everything after it, so the tail
+    catches any drop - and will not run a load that fails that.
   - WozMon echoes slowly, and typed commands sent at 1 ms per character
     get mangled ("400R" arrived as "400D"). The terminal and the commands
     this script types use 30 ms. Typing by hand is slower than that
@@ -52,7 +56,7 @@ except ImportError:
     sys.exit("needs pyserial:  python3 -m pip install pyserial")
 
 BAUD = 19200
-BYTE_GAP = 0.001        # binary load, per byte
+BYTE_GAP = 0.002        # binary load, per byte - 1 ms dropped bytes now and then
 KEY_GAP = 0.03          # anything WozMon has to echo, per character
 QUIT = b"\x1d"          # Ctrl-]
 
@@ -142,6 +146,17 @@ def entry_point(path, addr):
     return addr, None
 
 
+def read_back(s, a0, a1):
+    """Bytes $a0-$a1 from WozMon's examine, as a dict address -> value."""
+    type_line(s, "%X.%X\r" % (a0, a1))
+    text = read_idle(s, 2, 600).decode("latin-1")
+    mem = {}
+    for a, d in re.findall(r"([0-9A-F]{4}):((?: [0-9A-F]{2})+)", text):
+        for i, x in enumerate(d.split()):
+            mem[int(a, 16) + i] = int(x, 16)
+    return mem
+
+
 def load(s, path, addr, verify, run):
     data = open(path, "rb").read()
     end = addr + len(data)
@@ -161,16 +176,17 @@ def load(s, path, addr, verify, run):
         time.sleep(BYTE_GAP)
     if b"-Timeout-" not in read_idle(s, 3, 60):
         sys.exit("the loader never reported its timeout")
-    print("loaded")
+
+    tail = max(addr, end - 16)
+    mem = read_back(s, tail, end - 1)
+    if any(mem.get(a) != data[a - addr] for a in range(tail, end)):
+        sys.exit("loaded, but the last bytes do not match - a byte was dropped on the way.\n"
+                 "Not running it; load it again.")
+    print("loaded, tail checked")
 
     if verify:
         print("reading it back through WozMon (slow, about 3 s per 100 bytes) ...")
-        type_line(s, "%X.%X\r" % (addr, end - 1))
-        text = read_idle(s, 2, 600).decode("latin-1")
-        mem = {}
-        for a, d in re.findall(r"([0-9A-F]{4}):((?: [0-9A-F]{2})+)", text):
-            for i, x in enumerate(d.split()):
-                mem[int(a, 16) + i] = int(x, 16)
+        mem = read_back(s, addr, end - 1)
         bad = [a for a in range(addr, end) if mem.get(a) != data[a - addr]]
         if bad:
             sys.exit("%d bytes differ, first at $%04X - not running it" % (len(bad), bad[0]))

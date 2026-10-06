@@ -378,7 +378,69 @@ def cia_rate(data, load, init, play, song, clock):
     return CIA_CLOCK.get(clock, CIA_CLOCK['PAL']) / (period + 1.0), period
 
 
-def build_asm(datfile, org, init, play, song, rate, title, author, use_lcd, skcfg):
+def zero_needed(data, load, init, play, song):
+    """Addresses outside the tune that it reads before ever writing, over
+    init and ten seconds of play - memory it expects to find zeroed, as a
+    C64 leaves it. Real RAM here powers up with junk: International
+    Karate's remake reads 39 bytes of page 3 that way, and hung. Runs in
+    py65; returns None without it. Leaves out $00/$01 (the 6510's port on
+    a C64 - a tune reading $01 wants $37, not 0), the stack, the tune's
+    own body and the room after it where the driver goes, and I/O."""
+    try:
+        from py65.devices.mpu6502 import MPU
+        from py65.memory import ObservableMemory
+    except ImportError:
+        return None
+    mem = ObservableMemory()
+    mpu = MPU(memory=mem)
+    for i, b in enumerate(data):
+        mem[load + i] = b
+    skip = range(load, load + len(data) + 0x300)
+    written, early = set(), set()
+
+    def read(a):
+        if (a not in written and a not in skip and a >= 2 and not 0x100 <= a < 0x200
+                and a < 0x4000):
+            early.add(a)
+    mem.subscribe_to_read(range(0, 0x10000), read)
+    mem.subscribe_to_write(range(0, 0x10000), lambda a, v: written.add(a))
+
+    def call(addr, a):
+        mpu.sp = 0xFD
+        mem[0x1FE], mem[0x1FF] = 0xEF, 0xFF
+        mpu.a = mpu.x = mpu.y = a
+        mpu.pc = addr
+        for _ in range(200000):
+            if mpu.pc == 0xFFF0:
+                return
+            mpu.step()
+
+    call(init, song)
+    for _ in range(500):
+        call(play, 0)
+    runs = []                                  # merge into runs, gaps under 8
+    for a in sorted(early):
+        if runs and a - runs[-1][1] < 8:
+            runs[-1][1] = a
+        else:
+            runs.append([a, a])
+    return [(a, b) for a, b in runs]
+
+
+def zero_source(runs):
+    o = ['        lda #$00               ; memory the tune expects zeroed']
+    for a, b in runs:
+        while a <= b:
+            n = min(b - a + 1, 255)
+            o += ['        ldx #%d' % n,
+                  '-       sta $%04X,x' % (a - 1),
+                  '        dex',
+                  '        bne -']
+            a += n
+    return o
+
+
+def build_asm(datfile, org, init, play, song, rate, title, author, use_lcd, skcfg, zero=None):
     n = int(round(1000000.0 / rate)) - 2       # VIA T1 free-run period is N+2
     if not 0 <= n <= 0xFFFF:
         raise SystemExit('rate %s Hz is out of range for a 16-bit T1 at 1 MHz' % rate)
@@ -433,6 +495,8 @@ def build_asm(datfile, org, init, play, song, rate, title, author, use_lcd, skcf
     o.append('        sta VIA_T1CL')
     o.append('        lda #$%02X' % (n >> 8))
     o.append('        sta VIA_T1CH       ; loads latches and starts the timer')
+    if zero:
+        o += zero_source(zero)
     o.append('        lda #$%02X           ; song number' % song)
     o.append('        tax')
     o.append('        tay')
@@ -518,6 +582,11 @@ def convert(path, song=None, rate=None, skpico=True):
         rate = 60.0 if cia or info['clock'] == 'NTSC' else 50.0
     print('  %-12s song %d of %d, %s-timed, calling play at %g Hz%s'
           % ('playback', song, nsongs, 'CIA' if cia else 'vsync', rate, how))
+    zero = zero_needed(data, load, init, play, song) if play else None
+    if zero:
+        print('  %-12s %s before init - read before written, expected 0'
+              % ('clears', ', '.join('$%04X-$%04X' % r if r[0] != r[1] else '$%04X' % r[0]
+                                     for r in zero)))
 
     problems = []
     if play == 0:
@@ -557,7 +626,7 @@ def convert(path, song=None, rate=None, skpico=True):
         for n, (use_lcd, use_sk) in enumerate(variants):
             last = n == len(variants) - 1
             asm = build_asm(datfile, load, init, play, song, rate, title, author,
-                            use_lcd, skcfg if use_sk else None)
+                            use_lcd, skcfg if use_sk else None, zero)
             io.open(name + '.asm', 'w', newline='\r\n').write(asm)
             r = subprocess.Popen([ACME, '-f', 'plain', '-o', name + '.bin',
                                   '--symbollist', name + '.sym', name + '.asm'],
