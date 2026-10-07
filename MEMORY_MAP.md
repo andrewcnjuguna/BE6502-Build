@@ -320,6 +320,10 @@ Mirrors repeat through the 1K wherever A5 is set and A0-A3 clear. FM and a
 second SID are alternatives — byte 8 picks one — and the same A5 wire serves
 both. `FMTest.asm` plays one tone through the ports.
 
+FM sounds on the **second-SID channel** of the SKpico's stereo line-out, not
+SID #1's: config byte 12 (panning, 5 here) splits them. A single speaker on
+SID #1's side hears the SID but not FM.
+
 **Wiring:** GAL pin 16 → SKpico A8/IO pad. Program the GAL from
 `BE6502DEC_CUPL.PLD` rev 02 first; the committed `.jed` is rev 01 until it is
 rebuilt in WinCUPL. **Pin 28 (+12V) is not needed** and pin 27

@@ -16,6 +16,13 @@ desktop.ini
 __pycache__/
 *.pyc
 
+# Doom builds carry Doom's own data - doomplay.py output, never committed
+DoomPlay_*.bin
+DoomPlay_*.a
+DoomPlay_*_data.a
+*.WAD
+*.wad
+
 # HVSC index cache and fetch output
 Songlengths.md5
 hvsc_out/

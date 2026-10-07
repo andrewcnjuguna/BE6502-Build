@@ -5,6 +5,44 @@ project repos, not here.
 
 ---
 
+## 2026-10-07 — Doom's E1M1 on the OPL2, and three wiring faults
+
+At Doom's Gate plays on the SKpico's OPL2, with Doom v1.9's own music
+driver logic running on the 6502 (`code/DoomPlay.asm`, built by
+`doomplay.py` from the shareware WAD). The software is in README; getting
+there turned up three faults on the machine.
+
+**ACIA chip selects**
+
+The W65C51 answered across all of `$5000-$5FFF`, so every FM write to
+`$5430` also went out of the serial port as junk. The 2026-08-31 entry
+says CS1B moved to the GAL and CS0 went to +5V; in fact both were still
+on A12 and A13. Now **pin 2 (CS0) → +5V, pin 3 (CS1B) → GAL pin 14 only**,
+and the ACIA answers at `$5000-$53FF` alone. Found by reading its status
+register (`$10`) back from every 1K slot, after decoding the programmed
+`.jed` showed the GAL itself was right.
+
+**The FM select wire**
+
+Re-wiring the ACIA moved the GAL pin 16 → A8/IO wire to pin 17, then 15.
+Diagnosed with the scope on the SKpico's pads while `FMHold` ran: the
+A8/IO pad must drop for one cycle while the A5/A6 pad is high. Back on
+16, it does.
+
+**FM is on the other channel**
+
+The speaker came off the line-out during the work and went back on one
+channel only. The SID was audible, FM silent: FM plays as SID #2, which
+the panning setting puts on the other side of the stereo line-out. On
+both channels, both are heard.
+
+Also learned: v0.30 firmware does not return a fake OPL status on reads
+of `$5420`; it leaves the bus floating. And it queues FM writes in a
+256-entry ring drained in real time - writes faster than about one per
+20 us overflow it and are all lost, so the player spaces them to ~40 us.
+
+---
+
 ## 2026-10-06 — FM: the SKpico's OPL2 at `$5420`
 
 The SIDKick pico also emulates a YM3812 (OPL2), presented as the C64's SFX
