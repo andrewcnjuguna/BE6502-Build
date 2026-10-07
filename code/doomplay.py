@@ -31,6 +31,7 @@ tick, every OPL2 write the 6502 code makes in py65 against doomopl.py.
 """
 import argparse
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -189,36 +190,42 @@ def build(wad, lump):
             'INITINS  = %d' % slots.index(0),
             'MINREF   = %d' % MINREF,
             '', 'FreqLo', rows([f & 255 for f in FREQUENCY]),
-            'FreqHi', rows([f >> 8 for f in FREQUENCY]),
             'VolMap', rows(VOLUME, '%d'),
             'PercMap', rows(perc_map, '%d'),
             'InsLo', rows(['<(InsData+%d)' % (36 * i) for i in range(len(slots))], '%s'),
             'InsHi', rows(['>(InsData+%d)' % (36 * i) for i in range(len(slots))], '%s'),
             'InsData', rows(list(ins)),
-            'Score', rows(list(comp)), 'ScoreEnd', '']
+            'Score', rows(list(comp)), 'ScoreEnd',
+            'QREG = ScoreEnd           ; 255 queued writes: register, $00 = marker',
+            'QVAL = ScoreEnd + 256     ;                    value, or marker ticks',
+            'QEND = ScoreEnd + 512', '']
     with open(name + '_data.a', 'w', newline='\n') as f:
         f.write('\n'.join(data))
-    with open(name + '.a', 'w', newline='\n') as f:
+    with open(name + '.asm', 'w', newline='\n') as f:
         f.write('; %s %s\n* = $%04X\n!source "%s"\n!source "%s"\n'
                 % (os.path.basename(wad), lump, LOAD,
                    os.path.join(HERE, 'DoomPlay.asm').replace('\\', '/'), name + '_data.a'))
     r = subprocess.run([ACME, '-f', 'plain', '-o', name + '.bin', '--symbollist', name + '.sym',
-                        name + '.a'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                        name + '.asm'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if r.returncode:
         sys.exit('acme failed:\n' + r.stdout.decode('utf-8', 'replace'))
     size = os.path.getsize(name + '.bin')
     end = LOAD + size - 1
+    qend = int(re.search(r'\bQEND\s*=\s*\$([0-9a-fA-F]+)', open(name + '.sym').read()).group(1), 16) - 1
     print('%s: score %d bytes -> %d packed (nesting %d), %d instruments'
           % (lump, len(score), len(comp), depth, len(slots)))
-    print('wrote %s, $%04X-$%04X (%d bytes)%s' % (name + '.bin', LOAD, end, size,
-          '' if end < 0x4000 else '  - PAST THE TOP OF RAM'))
-    if end >= 0x4000:
+    print('wrote %s, $%04X-$%04X (%d bytes), write queue to $%04X%s'
+          % (name + '.bin', LOAD, end, size, qend,
+             '  - PAST THE TOP OF RAM' if qend >= 0x4000 else
+             '  - clear of the screen, a picture can go at $2000' if qend < 0x2000 else
+             '  - uses screen memory'))
+    if qend >= 0x4000:
         sys.exit(1)
     return name, mus, gm
 
 
 def check(name, wad, lump, ticks=4000):
-    """Run the binary in py65 with a free-running VIA T1 and compare its
+    """Run the binary in py65 with a model of VIA Timer 2 and compare its
     OPL2 writes, and the tick each one goes out in, with doomopl.py."""
     import re
     from py65.devices.mpu65c02 import MPU
@@ -230,24 +237,19 @@ def check(name, wad, lump, ticks=4000):
     mpu = MPU(memory=mem)
     for i, b in enumerate(open(name + '.bin', 'rb').read()):
         mem[LOAD + i] = b
-    via = {'start': None, 'cleared': 0}
+    via = {'start': None}
     reg, writes = [0], []
 
-    def expiries():
+    def expiries():                     # whole ticks since Timer 2 started
         if via['start'] is None:
             return 0
         return (mpu.processorCycles - via['start']) // period
 
-    def t1ch(a, v):
-        via['start'] = mpu.processorCycles
-    def ifr(a):
-        return 0x40 if expiries() > via['cleared'] else 0
-    def t1cl(a):
-        via['cleared'] = expiries()
-        return 0
-    mem.subscribe_to_write([0x6005], t1ch)
-    mem.subscribe_to_read([0x600D], ifr)
-    mem.subscribe_to_read([0x6004], t1cl)
+    def t2(a):                          # Timer 2 counts down from $ffff and wraps
+        n = (0xFFFF - (mpu.processorCycles - via['start'])) & 0xFFFF if via['start'] is not None else 0xFFFF
+        return n >> 8 if a == 0x6009 else n & 255
+    mem.subscribe_to_write([0x6009], lambda a, v: via.__setitem__('start', mpu.processorCycles))
+    mem.subscribe_to_read([0x6008, 0x6009], t2)
     mem.subscribe_to_write([0x5420], lambda a, v: reg.__setitem__(0, v))
     mem.subscribe_to_write([0x5430], lambda a, v: writes.append((expiries() - 1, reg[0], v)))
     mem.subscribe_to_read(range(0xD400, 0xD800), lambda a: 0xFE)

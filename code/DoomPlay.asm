@@ -36,6 +36,9 @@ VIA_ACR   = $600b
 VIA_T1CL  = $6004
 VIA_T1CH  = $6005
 VIA_IFR   = $600d
+VIA_T2CL  = $6008
+VIA_T2CH  = $6009
+TICKCYC   = 1000000 / 140      ; cycles per MUS tick
 SK_DATA   = $481d
 SK_PTR    = $481e
 SK_MODE   = $481f
@@ -74,6 +77,13 @@ QTAIL     = ZP+29       ;              next free
 QWAIT     = ZP+30       ; ticks until the next queued writes are due
 QSAVY     = ZP+31
 QLATE     = ZP+32       ; ticks the queue ran dry; taken off later waits
+CTL       = ZP+33       ; controller number - not TMP, which GetByte uses
+CLKL      = ZP+34       ; Timer 2 as just read
+CLKH      = ZP+35
+LASTL     = ZP+36       ; Timer 2 at the previous read
+LASTH     = ZP+37
+ACCL      = ZP+38       ; cycles elapsed and not yet spent on ticks
+ACCH      = ZP+39
 
 ; page 2 - WozMon's input buffer, free while this runs
 FR_PL     = $0200       ; decoder frames, 16 deep
@@ -99,8 +109,7 @@ NALLOC    = $02cd
 C_INS     = $02d0       ; sixteen channels
 C_VOL     = $02e0
 C_BEND    = $02f0
-QREG      = $3e00       ; 255 queued writes: register ($00 = marker)
-QVAL      = $3f00       ;                     value (marker: ticks)
+; QREG/QVAL, 256 bytes each, follow the score: see doomplay.py
 FR_SH     = $0190       ; skip, high - low in the stack page, far below the stack
 C_VEL     = $01a0
 KEPT      = $01b0
@@ -127,17 +136,62 @@ DOOM_START
         bcc +                  ; the first tick loads every instrument
         jsr Step
         jmp -
-+       lda #$40               ; T1 free-run
+; The clock is Timer 2, started once and left to count down at 1 MHz
+; and wrap. A timer flag only remembers one timeout: E1M5's long volume
+; fades made single steps run past a tick, a tick was lost each time,
+; and by the end it was 60 ticks behind. Counting elapsed cycles loses
+; nothing - a late tick is still a tick, run as soon as the loop is back.
++       lda #0                 ; T2 one-shot: it keeps counting past zero
         sta VIA_ACR
-        lda #<T1N
-        sta VIA_T1CL
-        lda #>T1N
-        sta VIA_T1CH
-Main    bit VIA_IFR            ; V <- T1 timed out
-        bvc Produce
-        bit VIA_T1CL           ; clears it
+        sta ACCL
+        sta ACCH
+        lda #$ff
+        sta LASTL
+        sta LASTH
+        sta VIA_T2CL
+        sta VIA_T2CH           ; starts it at $ffff
+Main    jsr Clock
+-       lda ACCL               ; a tick's worth elapsed?
+        sec
+        sbc #<TICKCYC
+        tax
+        lda ACCH
+        sbc #>TICKCYC
+        bcc Produce
+        sta ACCH
+        stx ACCL
         jsr Consume
-        jmp Main
+        jmp -
+
+Clock   lda VIA_T2CH           ; read it so a carry between bytes is caught
+        sta CLKH
+        lda VIA_T2CL
+        sta CLKL
+        lda VIA_T2CH
+        cmp CLKH
+        beq +
+        sta CLKH
+        lda VIA_T2CL
+        sta CLKL
++       sec                    ; elapsed = last - now; it counts down
+        lda LASTL
+        sbc CLKL
+        tax
+        lda LASTH
+        sbc CLKH
+        tay
+        lda CLKL
+        sta LASTL
+        lda CLKH
+        sta LASTH
+        clc
+        txa
+        adc ACCL
+        sta ACCL
+        tya
+        adc ACCH
+        sta ACCH
+        rts
 Produce jsr Room
         bcc Main
         jsr Step
@@ -310,12 +364,12 @@ EvSys   jsr GetByte
 ++      jmp GroupNext
 
 EvCtl   jsr GetByte
-        sta TMP
+        sta CTL
         jsr GetByte
         bpl +
         lda #127
 +       sta TMP2
-        lda TMP
+        lda CTL
         bne +
         lda TMP2               ; program change: already a slot number
         ldx CH
@@ -964,15 +1018,24 @@ FqLow   lda #<FreqLo
         ldy #0
         lda (P),y
         pha
-        lda #<FreqHi
-        clc
-        adc UL
-        sta P
-        lda #>FreqHi
-        adc UH
-        sta P+1
-        lda (P),y
-        sta UH
+        ldx #1                 ; high byte: the curve rises through each
+        lda UH                 ; segment, so it is 1 below 283, 2 below
+        cmp #>283              ; 508, then 3 - no table needed
+        bcc FqHi
+        bne +
+        lda UL
+        cmp #<283
+        bcc FqHi
++       inx
+        lda UH
+        cmp #>508
+        bcc FqHi
+        bne +
+        lda UL
+        cmp #<508
+        bcc FqHi
++       inx
+FqHi    stx UH
         pla
         sta UL
         rts

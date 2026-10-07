@@ -18,7 +18,8 @@ __pycache__/
 
 # Doom builds carry Doom's own data - doomplay.py output, never committed
 DoomPlay_*.bin
-DoomPlay_*.a
+DoomPlay_*.asm
+DoomPlay_*.sym
 DoomPlay_*_data.a
 *.WAD
 *.wad
