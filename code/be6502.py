@@ -69,7 +69,8 @@ QUIT = b"\x1d"          # Ctrl-]
 
 def find_port():
     ports = sorted(set(glob.glob("/dev/cu.PL2303*") + glob.glob("/dev/cu.usbserial*")
-                       + glob.glob("/dev/cu.usbmodem*")))
+                       + glob.glob("/dev/cu.usbmodem*")
+                       + glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")))  # Linux, e.g. a Pi
     if len(ports) == 1:
         return ports[0]
     if not ports:
@@ -209,6 +210,32 @@ def load(s, path, addr, verify, run):
         type_line(s, "%XR\r" % start)
 
 
+def load_program(s, path, addr=None, screen=None, verify=False, run=None):
+    """The whole `load` command: work out the address, refuse a picture the
+    program would overwrite, load the picture then the program. Also what
+    the Pi agent calls. Failures exit with the reason, as the CLI does."""
+    org = origin(path)
+    if addr is None:
+        if org is None:
+            sys.exit("no load address given and no .asm beside %s to read it from" % path)
+        addr = org
+    else:
+        addr = int(addr, 16)
+        if org is not None and org != addr:
+            sys.exit("%s is built for $%04X, not $%04X - leave the address out"
+                     % (os.path.basename(path), org, addr))
+    if screen:
+        last = addr + os.path.getsize(path) - 1
+        if addr <= 0x3FFF and last >= 0x2000:
+            sys.exit("%s occupies $%04X-$%04X, over the screen at $2000-$3FFF - the picture\n"
+                     "would be overwritten. Use a build that ends below $2000 (the _low ones)."
+                     % (os.path.basename(path), addr, last))
+        print("picture %s:" % os.path.basename(screen))
+        load(s, screen, 0x2000, False, None)
+        print("tune %s:" % os.path.basename(path))
+    load(s, path, addr, verify, run)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -234,26 +261,7 @@ def main():
         sys.exit("%s is busy - is another terminal or be6502.py still open?\n(%s)" % (port, e))
     time.sleep(0.2)
     if args.cmd == "load":
-        org = origin(args.file)
-        if args.addr is None:
-            if org is None:
-                sys.exit("no load address given and no .asm beside %s to read it from" % args.file)
-            addr = org
-        else:
-            addr = int(args.addr, 16)
-            if org is not None and org != addr:
-                sys.exit("%s is built for $%04X, not $%04X - leave the address out"
-                         % (os.path.basename(args.file), org, addr))
-        if args.screen:
-            last = addr + os.path.getsize(args.file) - 1
-            if addr <= 0x3FFF and last >= 0x2000:
-                sys.exit("%s occupies $%04X-$%04X, over the screen at $2000-$3FFF - the picture\n"
-                         "would be overwritten. Use a build that ends below $2000 (the _low ones)."
-                         % (os.path.basename(args.file), addr, last))
-            print("picture %s:" % os.path.basename(args.screen))
-            load(s, args.screen, 0x2000, False, None)
-            print("tune %s:" % os.path.basename(args.file))
-        load(s, args.file, addr, args.verify, args.run)
+        load_program(s, args.file, args.addr, args.screen, args.verify, args.run)
         if not args.run:
             return 0
     terminal(s)

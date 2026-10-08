@@ -1,0 +1,22 @@
+# systemd unit for the Pi: starts the Telegram bot at boot, restarts it if it dies.
+#
+#   sudo cp be6502-agent.service /etc/systemd/system/
+#   sudo systemctl enable --now be6502-agent
+#   journalctl -u be6502-agent -f          the console log
+#
+# Edit User and the paths if the Pi's user is not "andrew".
+
+[Unit]
+Description=BE6502 agent (Telegram + local model)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=andrew
+WorkingDirectory=/home/andrew/BE6502-Build/agent
+ExecStart=/home/andrew/BE6502-Build/agent/.venv/bin/python -u -m be6502_agent.telegram_bot
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
