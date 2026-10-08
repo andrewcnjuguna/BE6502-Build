@@ -10,6 +10,8 @@ address space is carved up, and what changed when.
 Start with **[MEMORY_MAP.md](MEMORY_MAP.md)** — memory map, the address
 decoding, SIDKick pico and LCD wiring, bring-up tests and 50 Hz timing.
 **[BUILD_LOG.md](BUILD_LOG.md)** is the dated record of hardware changes.
+**[COMMANDS.md](COMMANDS.md)** has every command for loading, converting, the
+model server and the Pi agent in one place.
 **[PSID_RSID_AND_THE_KERNAL.md](PSID_RSID_AND_THE_KERNAL.md)** explains why
 half of HVSC will never run here — interrupt vectors, what a KERNAL actually
 is, and why this machine has firmware instead of one.

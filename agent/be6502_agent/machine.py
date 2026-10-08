@@ -115,7 +115,104 @@ def _describe(path: Path, addr: int) -> str:
     entry, sym = be6502.entry_point(str(path), addr)
     run = f"run ${entry:04X}" if sym else f"run ${entry:04X} (no .sym - the load address)"
     clear = "screen-safe" if last < SCREEN[0] or addr > SCREEN[1] else "overlaps screen"
-    return f"{_rel(path)}  ${addr:04X}-${last:04X}  {run}  {clear}"
+    return f"{_rel(path)}  ${addr:04X}-${last:04X}  {run}  {clear}  [{sound(path)['tag']}]"
+
+
+# --- what a tune plays on --------------------------------------------------------
+# Read from the program's own source, not from anything the model says.
+# SidToBE6502.py's driver starts with SKSetup, which stores the tune's
+# settings into the SKpico's config bytes (RAM only): byte 0 SID #1 chip,
+# 8 SID #2 chip, 10 SID #2 address, 59 clock. DoomPlay.asm's SKFM sets
+# SID #2 to FM instead. PortSidToBE6502.py's older ports set nothing.
+
+SK_CHIP = {0: "6581", 1: "8580", 2: "8580 + digiboost", 3: "off", 4: "FM (OPL2)"}
+SK_SID2_AT = {1: "$D420", 2: "$D500", 3: "$D520", 5: "the IO pad"}
+SK_CLOCK = {0: "PAL", 1: "NTSC"}
+
+# The shareware episode's tracks, by Bobby Prince
+DOOM_TRACKS = {
+    "D_E1M1": "At Doom's Gate", "D_E1M2": "The Imp's Song", "D_E1M3": "Dark Halls",
+    "D_E1M4": "Kitchen Ace (And Taking Names)", "D_E1M5": "Suspense",
+    "D_E1M6": "On the Hunt", "D_E1M7": "Demons on the Prey", "D_E1M8": "Sign of Evil",
+    "D_E1M9": "Hiding the Secrets",
+}
+
+
+def _sk_writes(asm: str) -> dict:
+    """{config byte: value} that SKSetup stores; value None = copied from
+    SID #1's byte (SID #2 'the same chip')."""
+    block = asm.partition("\nSKSetup")[2].partition("\nSKLapse")[0]
+    writes, last = {}, None
+    for line in block.splitlines():
+        code = line.split(";")[0].split()
+        if code[:1] == ["lda"] and len(code) > 1:
+            m = re.fullmatch(r"#\$?(\d+)", code[1])
+            last = int(m.group(1)) if m else None
+        elif code[:1] == ["sta"] and len(code) > 1:
+            m = re.fullmatch(r"SKBuf\+(\d+)", code[1])
+            if m:
+                writes[int(m.group(1))] = last
+    return writes
+
+
+def sound(path: Path) -> dict:
+    """What the tune plays on: {'tag': short, 'lines': [for the card], 'title': ...}."""
+    asm_path = path.with_suffix(".asm")
+    asm = asm_path.read_text(errors="replace") if asm_path.exists() else ""
+    rate = re.search(r"(\d+(?:\.\d+)?) ?Hz", asm[:600])
+    rate = f"{rate.group(1)} Hz" if rate else None
+
+    if "DoomPlay.asm" in asm:
+        lump = re.search(r"D_E\dM\d", asm[:200] + path.stem)
+        lump = lump.group(0) if lump else path.stem
+        name = DOOM_TRACKS.get(lump)
+        return {
+            "tag": "OPL2 FM",
+            "title": f"Doom {lump[2:]}" + (f" \"{name}\" - Bobby Prince" if name else ""),
+            "lines": ["Sound: OPL2 FM at $5420/$5430 - the SKpico's SID #2 switched to FM",
+                      "Driver: Doom's v1.9 OPL driver on the 6502, 140 Hz MUS ticks"],
+        }
+
+    title = re.search(r'^TitleStr\s+!text "(.*)"', asm, re.M)
+    author = re.search(r'^AuthorStr\s+!text "(.*)"', asm, re.M)
+    title = " - ".join(s.group(1).strip() for s in (title, author) if s and s.group(1).strip())
+    title = title or path.stem.removeprefix("BE6502_").replace("_", " ")
+
+    if "\nSKSetup" not in asm:
+        return {"tag": "SID, SKpico as saved", "title": title, "lines": [
+            "Sound: SID - the tune leaves the SKpico as SKConfig last saved it",
+            f"Driver: {rate + ' ' if rate else ''}polled VIA T1"]}
+
+    w = _sk_writes(asm)
+    sid1 = SK_CHIP.get(w.get(0), "as saved (the tune doesn't say)")
+    if 0 in w and w[0] == 1 and "cmp #2" in asm.partition("\nSKSetup")[2][:2000]:
+        sid1 = "8580"  # an 8580 tune keeps digiboost if it was already on
+    sid2_type = w.get(8, 3)
+    sid2 = "same chip as SID #1" if 8 in w and sid2_type is None else SK_CHIP.get(sid2_type, "unchanged")
+    clock = SK_CLOCK.get(w.get(59), "clock as saved")
+    if sid2 == "off":
+        two = "1 SID"
+        sid2_text = "SID #2 off"
+    else:
+        two = "2SID"
+        sid2_text = f"SID #2 {sid2} at {SK_SID2_AT.get(w.get(10), 'its saved address')}"
+    return {
+        "tag": f"{sid1.split(' (')[0]} {clock} {two}".replace("as saved PAL", "chip as saved, PAL"),
+        "title": title,
+        "lines": [f"SKpico: SID #1 {sid1}, {sid2_text}, {clock}",
+                  f"Driver: {rate or '?'} polled VIA T1" + (", title on the LCD" if "LCDInit" in asm else "")],
+    }
+
+
+def now_playing(tune: str, picture: str = "") -> str:
+    """The card sent to Telegram when a tune starts."""
+    tunes, pictures = _scan()
+    path = _resolve(tune, [p for p, _ in tunes], "tune")
+    info = sound(path)
+    lines = [f"▶ Now playing: {info['title']}", _rel(path)] + info["lines"]
+    if picture:
+        lines.append(f"Picture: {_resolve(picture, pictures, 'picture').name}")
+    return "\n".join(lines)
 
 
 def list_tunes(query: str = "", limit: int = 60) -> str:
@@ -174,7 +271,8 @@ def play(tune: str, picture: str = "", verify: bool = False) -> str:
         with _captured() as out:
             be6502.load_program(s, str(path), screen=str(screen) if screen else None,
                                 verify=verify, run="auto")
-    return (out.getvalue().strip()
+    return (out.getvalue().strip() + "\n" + "\n".join(sound(path)["lines"])
+            + "\n(The user has been sent this setup already.)"
             + "\nIt is running now. The machine will not answer serial again until "
               "the user presses reset.")
 

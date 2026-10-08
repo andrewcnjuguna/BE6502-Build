@@ -11,7 +11,7 @@ import json
 
 from . import settings
 from .local_llm import LocalClient, to_history
-from .tools import GATED_TOOLS, TOOLS, execute_tool
+from .tools import GATED_TOOLS, TOOLS, announce, execute_tool
 
 # A turn that is still calling tools after this many rounds is looping;
 # hand control back to the user rather than hang the chat.
@@ -40,8 +40,10 @@ guess a name. If the user's request matches several tunes, pick the most \
 likely one and say which; if it matches none, say so and suggest near ones.
 - A picture can go with a tune only if the tune is screen-safe - the _low \
 builds exist for this. Match pictures to tunes by game name.
-- Doom tracks (DoomPlay_*) need the SKpico's second SID set to FM, which the \
-user does with SKConfig. Mention it the first time they ask for one.
+- Doom tracks (DoomPlay_*) play on the OPL2; the player switches the SKpico's \
+second SID to FM by itself.
+- When a tune starts, the user is sent a card saying what it plays on (SID \
+chip, PAL/NTSC, second SID, FM). Don't repeat it; answer questions about it.
 - play_tune waits for the user to approve it. If they decline, ask what they \
 want instead.
 - If a load fails, report the reason the tool gave. A dropped byte is worth \
@@ -97,6 +99,13 @@ class BE6502Agent:
         except Exception as exc:  # tool errors go back to the model, not the user
             result["content"] = f"Error: {exc}"
             result["is_error"] = True
+            return result
+        try:
+            note = announce(block.name, dict(block.input))
+        except Exception as exc:
+            note = f"[could not describe it: {exc}]"
+        if note:
+            self.on_status(note)
         return result
 
     def send(self, user_message: str):

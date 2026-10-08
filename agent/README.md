@@ -20,7 +20,7 @@ phone ── Telegram ── Pi ── USB serial ── BE6502
 | tool | |
 |---|---|
 | `machine_status` | sends Escape and listens. WozMon echoes; a running tune says nothing |
-| `list_tunes` | searches the library: load range, run address, and whether the tune is *screen-safe* (ends below `$2000`, so a picture can go with it) |
+| `list_tunes` | searches the library: load range, run address, whether the tune is *screen-safe* (ends below `$2000`, so a picture can go with it), and what it plays on |
 | `list_pictures` | the 8 KB `*_screen.bin` pictures |
 | `play_tune` | **asks you first** (Approve/Decline), then loads the picture and the tune and runs it |
 | `read_memory` | up to 256 bytes through WozMon |
@@ -30,6 +30,15 @@ the CLI. That covers the 2 ms byte timing, the tail read-back that catches
 a dropped byte, the `.asm` origin, `BE6502_START` from the `.sym`, and the
 refusal to load a picture a tune would overwrite. The model cannot get
 around any of these checks.
+
+When a tune starts, Telegram gets a **now playing** card: title, SID #1
+chip, SID #2 (off, its chip and address, or FM for the Doom tracks),
+PAL/NTSC, and the play rate. The card comes from the tune's own code, not
+from the model. For a converted tune that is the `SKSetup` routine
+`SidToBE6502.py` generates, which sets the SKpico before the tune starts.
+The older hand-ported tunes don't set the SKpico, so their card says they
+play on whatever SKConfig last saved. Titles are the 16-character LCD
+strings, so long ones are cut off.
 
 Tunes loop forever and only reset stops them. The agent cannot press reset,
 so after each tune it asks you to.
@@ -118,7 +127,7 @@ This is the Telegram bot. To start it at boot, see
 ## Notes
 
 - The machine must be at 1 MHz for the SKpico, the same as for any SID work here.
-- Doom tracks need the SKpico's second SID set to FM (SKConfig), and GAL rev 02.
+- Doom tracks need GAL rev 02. The player switches the SKpico's second SID to FM itself.
 - A tune that plays silent is not a load failure; `PORTED_TUNES.md` in the
   SidPlayer repo lists the ones known to be silent.
 - If `local_llm.py` changes in the flash agent, copy it over. Keeping the

@@ -1,6 +1,8 @@
 """Tool definitions and dispatch, in the flash agent's format (Anthropic
 tool schemas; local_llm.py turns them into OpenAI functions)."""
 
+from __future__ import annotations
+
 from . import machine
 
 # Tools the operator approves first. Playing a tune is harmless, but gating
@@ -24,8 +26,10 @@ TOOLS = [
         "name": "list_tunes",
         "description": (
             "Search the tune library on this Pi. Each line gives the tune's path, "
-            "its load range, the address it runs from, and whether it is "
-            "screen-safe (ends below $2000, so it can be played with a picture). "
+            "its load range, the address it runs from, whether it is "
+            "screen-safe (ends below $2000, so it can be played with a picture), "
+            "and in [brackets] what it plays on: SID chip, PAL/NTSC, one or two "
+            "SIDs, or OPL2 FM. "
             "query is space-separated words that must all appear in the path, "
             "e.g. 'hubbard monty' or 'doom'. Empty query lists everything."
         ),
@@ -81,6 +85,14 @@ TOOLS = [
         },
     },
 ]
+
+
+def announce(name: str, args: dict) -> str | None:
+    """A message sent straight to the user after a tool succeeds - written
+    by code, so what the tune plays on is reported exactly."""
+    if name == "play_tune":
+        return machine.now_playing(args["tune"], args.get("picture", ""))
+    return None
 
 
 def execute_tool(name: str, args: dict) -> str:
