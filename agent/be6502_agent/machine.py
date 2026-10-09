@@ -139,7 +139,8 @@ DOOM_TRACKS = {
 
 
 # Name prefixes of MIDI builds, as the library names them
-MIDI_GAMES = {"FF6_": "Final Fantasy VI", "FF7_": "Final Fantasy VII"}
+MIDI_GAMES = {"FF6_": "Final Fantasy VI", "FF7_": "Final Fantasy VII",
+              "OoT_": "Zelda: Ocarina of Time"}
 
 
 def _sk_writes(asm: str) -> dict:
