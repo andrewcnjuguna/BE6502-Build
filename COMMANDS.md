@@ -83,6 +83,29 @@ python3 doomplay.py DOOM1.WAD D_E1M1
 Builds `DoomPlay_D_E1M1.bin`. Needs GAL rev 02. `--check` compares every
 OPL2 write against the reference in py65.
 
+```bash
+python3 doomplay.py DOOM1.WAD FF6_Opening.mid --check
+```
+
+Plays any MIDI file on the OPL2 the same way: `midi2mus.py` turns it into
+a Doom score first, and GENMIDI from the WAD supplies the instruments.
+Builds `DoomPlay_FF6_Opening.bin`, which loads and runs at `$0300`.
+
+```bash
+python3 doomplay.py DOOM1.WAD ff302.mid ff303.mid ff304.mid --name FF6_Opening_Full --check
+```
+
+Joins several MIDIs into one piece, played in turn. That one is FF6's whole
+opening, 4:14, built as `DoomPlay_FF6_Opening_Full.bin`. If a build's write
+queue ends past `$2000`, there's no room for a picture.
+
+If a tune goes silent or stops, press reset and load nothing else: RAM
+(the stack page especially) shows what happened. See BUILD_LOG 2026-10-08.
+
+The shareware `DOOM1.WAD` is inside id's `doom19s.zip` (idgames
+`idstuff/doom/`): join `DOOMS_19.1` and `DOOMS_19.2` into one file, then
+`bsdtar -xf` it.
+
 ## Local model server (Mac)
 
 ```bash

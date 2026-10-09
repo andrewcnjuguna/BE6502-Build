@@ -5,6 +5,52 @@ project repos, not here.
 
 ---
 
+## 2026-10-08 — Two FM faults seen once, not yet explained
+
+No hardware change. Found while playing FF6 MIDIs through the Doom player.
+
+**FM silent after SID tunes, once**
+
+The first FM tune after two SID tunes was silent. E1M1 straight after it
+played, and so did everything after that. The obvious suspect was the
+Doom player's switch from "SID #2 off" (what a converted SID tune leaves)
+to FM, in RAM. Tested on 2026-10-09 with a program that switches and then
+beeps, and it isn't that:
+
+- SID #2 off, a second of RAM writes, the switch: beep.
+- Two minutes of Racing Chocobos (SID #2 off), reset, the switch alone:
+  beep.
+
+Both times the config read back as type 3 before and type 4 after, with
+byte 10 = 5. So the switch works. A player that crashes in its first
+moments, as below, would also be silent.
+
+**A crash that ROM reads explain**
+
+The 4:14 FF6 opening stopped after 1:05 and was silent until reset. The
+next play of the same binary ran right through and looped. Read back
+after the reset:
+
+- RAM matched the `.bin` (apart from `SKBuf`), so the load was good.
+- The player's tables matched py65's, byte for byte, at 64.8 s: it had
+  done exactly what the simulator does, up to the moment it died.
+- The stack page was full of one 3-byte BRK frame, `37 01 C7`: P = `$37`,
+  return `$C701`. The CPU had read the IRQ vector as `$C6FF` again and
+  again, and `$C6xx` is empty ROM (all BRK). The vector reads `$F962`.
+
+So for a while, reads of the ROM came back wrong. When it happened, the
+player was only polling VIA Timer 2 and waiting for its queue to drain.
+Suspects if it happens again: the video circuit's bus sharing meeting
+an interrupt, or the SKpico driving the bus. To check, read `$0100-$01FF`
+before loading anything else.
+
+Also on 2026-10-09: two loads of the same 4 KB tune in a row each lost
+two bytes near the start, and the tail check refused to run them. The
+third load was clean. Earlier loads of that file that night were clean
+too.
+
+---
+
 ## 2026-10-07 — Doom's E1M1 on the OPL2, and three wiring faults
 
 At Doom's Gate plays on the SKpico's OPL2, with Doom v1.9's own music

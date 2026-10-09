@@ -167,12 +167,30 @@ def rows(vals, fmt='$%02X', per=16):
                      for i in range(0, len(vals), per))
 
 
-def build(wad, lump):
+def music(wad, lump, more=(), name=None):
+    """(name, MUS bytes): a lump of the WAD, a .mus or .mid file, or
+    several .mid files played in turn."""
+    if more:
+        import midi2mus
+        stem = name or os.path.splitext(os.path.basename(lump))[0]
+        data = midi2mus.convert([open(m, 'rb').read() for m in (lump,) + tuple(more)],
+                                report=lambda m: print('%s: %s' % (stem, m)))
+        return stem, data
+    if os.path.isfile(lump):
+        stem = name or os.path.splitext(os.path.basename(lump))[0]
+        data = open(lump, 'rb').read()
+        if data[:4] == b'MThd':
+            import midi2mus
+            data = midi2mus.convert(data, report=lambda m: print('%s: %s' % (stem, m)))
+        return stem, data
     lumps = doomopl.wad_lumps(wad)
     if lump not in lumps:
-        sys.exit('%s has no %s' % (wad, lump))
-    mus = lumps[lump]
-    gm = lumps['GENMIDI']
+        sys.exit('%s has no %s and there is no such file' % (wad, lump))
+    return lump, lumps[lump]
+
+
+def build(wad, lump, mus):
+    gm = doomopl.wad_lumps(wad)['GENMIDI']
     length, start = struct.unpack('<HH', mus[4:8])
     score, slots, percs = rewrite(mus[start:start + length], None)
     comp, depth = compress(score)
@@ -224,7 +242,7 @@ def build(wad, lump):
     return name, mus, gm
 
 
-def check(name, wad, lump, ticks=4000):
+def check(name, wad, mus, ticks=4000):
     """Run the binary in py65 with a model of VIA Timer 2 and compare its
     OPL2 writes, and the tick each one goes out in, with doomopl.py."""
     import re
@@ -263,7 +281,7 @@ def check(name, wad, lump, ticks=4000):
     drv = doomopl.OPLDriver(main_i, perc_i)
     drv.init_registers()
     want = [(-1, r, v) for r, v in drv.writes]
-    for t, ws in doomopl.play_mus(lumps[lump], drv):
+    for t, ws in doomopl.play_mus(mus, drv):
         if t >= ticks:
             break
         want += [(t, r, v) for r, v in ws]
@@ -286,12 +304,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('wad')
-    ap.add_argument('lump', nargs='?', default='D_E1M1')
+    ap.add_argument('lump', nargs='?', default='D_E1M1',
+                    help='music lump in the WAD, or a .mus or .mid file')
+    ap.add_argument('more', nargs='*', help='more .mid files, played after the first')
+    ap.add_argument('--name', help='name the build (default: the first file\'s)')
     ap.add_argument('--check', action='store_true', help='compare with doomopl.py in py65')
     args = ap.parse_args()
-    name, _, _ = build(args.wad, args.lump)
+    lump, mus = music(args.wad, args.lump, args.more, args.name)
+    name, _, _ = build(args.wad, lump, mus)
     if args.check:
-        sys.exit(0 if check(name, args.wad, args.lump) else 1)
+        sys.exit(0 if check(name, args.wad, mus) else 1)
 
 
 if __name__ == '__main__':
