@@ -153,6 +153,18 @@ def entry_point(path, addr):
     return addr, None
 
 
+def last_address(path, addr):
+    """The last address the program uses: the end of the .bin, or of the
+    Doom player's write queue (QEND in its .sym) which runs on past it."""
+    last = addr + os.path.getsize(path) - 1
+    sym = os.path.splitext(path)[0] + ".sym"
+    if os.path.exists(sym):
+        m = re.search(r"^\s*QEND\s*=\s*\$([0-9a-fA-F]+)", open(sym).read(), re.M)
+        if m:
+            last = max(last, int(m.group(1), 16) - 1)
+    return last
+
+
 def read_back(s, a0, a1):
     """Bytes $a0-$a1 from WozMon's examine, as a dict address -> value."""
     type_line(s, "%X.%X\r" % (a0, a1))
@@ -225,7 +237,7 @@ def load_program(s, path, addr=None, screen=None, verify=False, run=None):
             sys.exit("%s is built for $%04X, not $%04X - leave the address out"
                      % (os.path.basename(path), org, addr))
     if screen:
-        last = addr + os.path.getsize(path) - 1
+        last = last_address(path, addr)
         if addr <= 0x3FFF and last >= 0x2000:
             sys.exit("%s occupies $%04X-$%04X, over the screen at $2000-$3FFF - the picture\n"
                      "would be overwritten. Use a build that ends below $2000 (the _low ones)."

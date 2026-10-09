@@ -111,7 +111,7 @@ def _scan():
 
 
 def _describe(path: Path, addr: int) -> str:
-    last = addr + path.stat().st_size - 1
+    last = be6502.last_address(str(path), addr)
     entry, sym = be6502.entry_point(str(path), addr)
     run = f"run ${entry:04X}" if sym else f"run ${entry:04X} (no .sym - the load address)"
     clear = "screen-safe" if last < SCREEN[0] or addr > SCREEN[1] else "overlaps screen"
@@ -136,6 +136,10 @@ DOOM_TRACKS = {
     "D_E1M6": "On the Hunt", "D_E1M7": "Demons on the Prey", "D_E1M8": "Sign of Evil",
     "D_E1M9": "Hiding the Secrets",
 }
+
+
+# Name prefixes of MIDI builds, as the library names them
+MIDI_GAMES = {"FF6_": "Final Fantasy VI", "FF7_": "Final Fantasy VII"}
 
 
 def _sk_writes(asm: str) -> dict:
@@ -163,15 +167,28 @@ def sound(path: Path) -> dict:
     rate = f"{rate.group(1)} Hz" if rate else None
 
     if "DoomPlay.asm" in asm:
-        lump = re.search(r"D_E\dM\d", asm[:200] + path.stem)
-        lump = lump.group(0) if lump else path.stem
-        name = DOOM_TRACKS.get(lump)
-        return {
-            "tag": "OPL2 FM",
-            "title": f"Doom {lump[2:]}" + (f" \"{name}\" - Bobby Prince" if name else ""),
-            "lines": ["Sound: OPL2 FM at $5420/$5430 - the SKpico's SID #2 switched to FM",
-                      "Driver: Doom's v1.9 OPL driver on the 6502, 140 Hz MUS ticks"],
-        }
+        # doomplay.py heads the .asm with "; <wad> <what it plays>": a Doom
+        # lump (D_E1M1) or the name it gave a MIDI build (FF7_Cosmo_Canyon).
+        head = re.match(r"; \S+ (\S+)", asm)
+        source = head.group(1) if head else path.stem.removeprefix("DoomPlay_")
+        sound_line = "Sound: OPL2 FM at $5420/$5430 - the SKpico's SID #2 switched to FM"
+        if re.fullmatch(r"D_\w+", source):
+            name = DOOM_TRACKS.get(source)
+            return {
+                "tag": "OPL2 FM",
+                "title": f"Doom {source[2:]}" + (f" \"{name}\" - Bobby Prince" if name else ""),
+                "lines": [sound_line, "Driver: Doom's v1.9 OPL driver on the 6502, 140 Hz MUS ticks"],
+            }
+        low = source.endswith("_low")
+        title = source.removesuffix("_low")
+        for prefix, game in MIDI_GAMES.items():
+            if title.startswith(prefix):
+                title = game + ": " + title.removeprefix(prefix)
+        lines = [sound_line,
+                 "Driver: a MIDI file through Doom's v1.9 OPL driver and instruments, 140 Hz"]
+        if low:
+            lines.append("Shortened, with a fade, to leave room for a picture")
+        return {"tag": "OPL2 FM, MIDI", "title": title.replace("_", " "), "lines": lines}
 
     title = re.search(r'^TitleStr\s+!text "(.*)"', asm, re.M)
     author = re.search(r'^AuthorStr\s+!text "(.*)"', asm, re.M)

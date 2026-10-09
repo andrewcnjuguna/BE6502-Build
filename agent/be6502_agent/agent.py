@@ -40,8 +40,10 @@ guess a name. If the user's request matches several tunes, pick the most \
 likely one and say which; if it matches none, say so and suggest near ones.
 - A picture can go with a tune only if the tune is screen-safe - the _low \
 builds exist for this. Match pictures to tunes by game name.
-- Doom tracks (DoomPlay_*) play on the OPL2; the player switches the SKpico's \
-second SID to FM by itself.
+- DoomPlay_* builds play on the OPL2 through Doom's music driver: Doom's own \
+tracks (DoomPlay_D_E1M1 and the like) and MIDI files, such as the Final \
+Fantasy ones under HVSC/Final_Fantasy/opl2. Don't call a MIDI build Doom \
+music. The player switches the SKpico's second SID to FM by itself.
 - When a tune starts, the user is sent a card saying what it plays on (SID \
 chip, PAL/NTSC, second SID, FM). Don't repeat it; answer questions about it.
 - play_tune waits for the user to approve it. If they decline, ask what they \
