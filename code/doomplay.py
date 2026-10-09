@@ -22,8 +22,9 @@ of frames, never needing the decoded score in memory. 17,237 bytes of
 E1M1 become about 10 KB.
 
 The score is lightly rewritten first, without changing what it plays:
-melodic channels are renumbered in order of first use, as mus2mid does,
-so the driver's channel number is the MUS one; program changes name the
+melodic channels are renumbered 0-14 in order of first use, as mus2mid
+does (without its gap at 9 - percussion here is 15), so the driver's
+channel number is the MUS one; program changes name the
 instrument's slot among those the song uses.
 
     python3 doomplay.py DOOM1.WAD D_E1M1 --check   ...and compare, tick by
@@ -90,8 +91,6 @@ def rewrite(score, main_index):
         for ev in group:
             c = ev[0] & 15
             if c not in chmap:
-                if nxt == 9:
-                    nxt += 1
                 chmap[c] = nxt
                 nxt += 1
             ev[0] = (ev[0] & 0xF0) | chmap[c]
@@ -167,22 +166,19 @@ def rows(vals, fmt='$%02X', per=16):
                      for i in range(0, len(vals), per))
 
 
-def music(wad, lump, more=(), name=None):
+def music(wad, lump, more=(), name=None, seconds=None):
     """(name, MUS bytes): a lump of the WAD, a .mus or .mid file, or
-    several .mid files played in turn."""
-    if more:
-        import midi2mus
-        stem = name or os.path.splitext(os.path.basename(lump))[0]
-        data = midi2mus.convert([open(m, 'rb').read() for m in (lump,) + tuple(more)],
-                                report=lambda m: print('%s: %s' % (stem, m)))
-        return stem, data
+    several .mid files played in turn - cut at `seconds` if given."""
     if os.path.isfile(lump):
         stem = name or os.path.splitext(os.path.basename(lump))[0]
-        data = open(lump, 'rb').read()
-        if data[:4] == b'MThd':
+        data = [open(m, 'rb').read() for m in (lump,) + tuple(more)]
+        if all(d[:4] == b'MThd' for d in data):
             import midi2mus
-            data = midi2mus.convert(data, report=lambda m: print('%s: %s' % (stem, m)))
-        return stem, data
+            return stem, midi2mus.convert(data, seconds=seconds,
+                                          report=lambda m: print('%s: %s' % (stem, m)))
+        if more or seconds:
+            sys.exit('joining and --seconds work on MIDI files only')
+        return stem, data[0]
     lumps = doomopl.wad_lumps(wad)
     if lump not in lumps:
         sys.exit('%s has no %s and there is no such file' % (wad, lump))
@@ -239,7 +235,7 @@ def build(wad, lump, mus):
              '  - uses screen memory'))
     if qend >= 0x4000:
         sys.exit(1)
-    return name, mus, gm
+    return name, qend
 
 
 def check(name, wad, mus, ticks=4000):
@@ -300,6 +296,33 @@ def check(name, wad, mus, ticks=4000):
     return True
 
 
+def fit(args, top):
+    """Whole seconds to cut at so the build ends below top, or None if the
+    whole piece already does. Halves the range: each try is a full build."""
+    import contextlib
+    import io
+    import midi2mus
+
+    def fits(seconds):
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                lump, mus = music(args.wad, args.lump, args.more, args.name, seconds)
+                return build(args.wad, lump, mus)[1] < top
+        except SystemExit:
+            return False
+    if fits(None):
+        return None
+    lo, hi = 10, int(midi2mus.duration([open(m, 'rb').read()
+                                         for m in (args.lump,) + tuple(args.more)]))
+    if not fits(lo):
+        sys.exit('even %d seconds do not fit below $%04X' % (lo, top))
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        lo, hi = (mid, hi) if fits(mid) else (lo, mid)
+    print('cut at %d:%02d to fit below $%04X' % (lo // 60, lo % 60, top))
+    return lo
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -308,10 +331,15 @@ def main():
                     help='music lump in the WAD, or a .mus or .mid file')
     ap.add_argument('more', nargs='*', help='more .mid files, played after the first')
     ap.add_argument('--name', help='name the build (default: the first file\'s)')
+    ap.add_argument('--seconds', type=float, help='cut a MIDI here, fading out first')
+    ap.add_argument('--fit', nargs='?', const='ram', choices=('ram', 'screen'),
+                    help='cut a MIDI as late as still fits: below $4000, or below '
+                         'the screen at $2000 to leave room for a picture')
     ap.add_argument('--check', action='store_true', help='compare with doomopl.py in py65')
     args = ap.parse_args()
-    lump, mus = music(args.wad, args.lump, args.more, args.name)
-    name, _, _ = build(args.wad, lump, mus)
+    seconds = fit(args, 0x4000 if args.fit == 'ram' else 0x2000) if args.fit else args.seconds
+    lump, mus = music(args.wad, args.lump, args.more, args.name, seconds)
+    name, _ = build(args.wad, lump, mus)
     if args.check:
         sys.exit(0 if check(name, args.wad, mus) else 1)
 

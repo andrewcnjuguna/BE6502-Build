@@ -99,6 +99,15 @@ Joins several MIDIs into one piece, played in turn. That one is FF6's whole
 opening, 4:14, built as `DoomPlay_FF6_Opening_Full.bin`. If a build's write
 queue ends past `$2000`, there's no room for a picture.
 
+```bash
+python3 doomplay.py DOOM1.WAD "4-16 One Winged Angel Xg.mid" --fit --check
+```
+
+For a MIDI too big for RAM: `--fit` cuts it as late as still fits below
+`$4000` (One-Winged Angel: 1:43 of 4:02), with a 3-second fade before the
+cut. `--fit screen` stays below `$2000`, leaving room for a picture.
+`--seconds 90` cuts at a time you choose.
+
 If a tune goes silent or stops, press reset and load nothing else: RAM
 (the stack page especially) shows what happened. See BUILD_LOG 2026-10-08.
 

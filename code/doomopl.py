@@ -283,12 +283,12 @@ def play_mus(mus, drv):
         if c == 15:
             return drv.channels[15]             # percussion: MIDI 9, i_oplmusic's 15
         if c not in midi_of:
-            n = nxt[0]
+            # In order of first use, as mus2mid does. mus2mid skips 9, MIDI's
+            # percussion; here percussion is 15, so 0-14 are all free. The
+            # driver only compares channel numbers, so the order is what
+            # counts - and with the skip a 15th melodic channel landed on 15.
+            midi_of[c] = nxt[0]
             nxt[0] += 1
-            if n == 9:                          # MIDI 9 is percussion; skip it
-                n = nxt[0]
-                nxt[0] += 1
-            midi_of[c] = 15 if n == 9 else n
         return drv.channels[midi_of[c]]
 
     while pos < start + length:

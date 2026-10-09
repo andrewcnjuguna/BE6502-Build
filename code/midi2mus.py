@@ -10,6 +10,13 @@ the SIDKick pico's OPL2 with Doom's own driver and GENMIDI instruments.
 Files joined end to end start clean: at each join every channel gets all
 notes off, and bend, volume and program go back to MIDI's defaults.
 
+    python3 midi2mus.py ff7_main.mid --seconds 150
+                                                  stops at 2:30
+
+A cut fades out over the 3 seconds before it, in 12 volume steps, then
+stops every note. Most game MIDIs play their loop twice or more, so a cut
+after the first time round loses little.
+
 MUS runs at a fixed 140 ticks a second and has no tempo, so the MIDI's
 tempo map is baked into the times: every event lands on the nearest MUS
 tick, at most 3.6 ms off. What Doom's driver ignores is dropped - pan,
@@ -26,6 +33,8 @@ import struct
 import sys
 
 TICK_HZ = 140
+FADE = 3                                    # seconds of fade before a cut
+FADE_STEPS = 12
 PERC = 9                                    # MIDI channel 10, counted from 0
 
 
@@ -93,9 +102,25 @@ def to_mus_ticks(division, events):
         yield round(secs * TICK_HZ), status, d
 
 
-def convert(data, report=None):
-    """MUS from one MIDI file, or from a list of them played in turn."""
+def duration(data):
+    """Seconds one MIDI file, or a list of them played in turn, lasts."""
     files = [data] if isinstance(data, (bytes, bytearray)) else list(data)
+    total = 0
+    for midi in files:
+        division, events = read_midi(midi)
+        total += max((t for t, _, _ in to_mus_ticks(division, events)), default=0)
+    return total / TICK_HZ
+
+
+def convert(data, report=None, seconds=None):
+    """MUS from one MIDI file, or from a list of them played in turn.
+    seconds cuts it there, fading out over the FADE seconds before."""
+    files = [data] if isinstance(data, (bytes, bytearray)) else list(data)
+    limit = round(seconds * TICK_HZ) if seconds else None
+    fade_from = limit - FADE * TICK_HZ if limit else None
+    steps = ([fade_from + FADE * TICK_HZ * k // FADE_STEPS for k in range(1, FADE_STEPS)]
+             if limit else [])
+    base = [100] * 16                        # volume before the fade, per MUS channel
     sent_vol = [None] * 16                   # MUS volume last sent, per MUS channel
     sent_bend = [128] * 16
     sent_prog = [0] * 16
@@ -114,23 +139,39 @@ def convert(data, report=None):
         return 15 if c == PERC else (c if c < PERC else c - 1)
 
     def set_volume(t, m, v):
+        base[m] = v
+        if limit and t > fade_from:
+            v = v * (limit - t) // (limit - fade_from)
         if v != sent_vol[m]:
             sent_vol[m] = v
             emit(t, (0x40 | m, 3, v))
 
+    def used():
+        return sorted({ev[0] & 15 for _, evs in groups for ev in evs})
+
+    def fade_until(t):
+        while steps and steps[0] <= t:
+            s = steps.pop(0)
+            for m in used():
+                set_volume(s, m, base[m])
+
     def join(t):
-        for m in sorted({ev[0] & 15 for _, evs in groups for ev in evs}):
+        for m in used():
             emit(t, (0x30 | m, 11))          # all notes off
             if sent_bend[m] != 128:
                 sent_bend[m] = 128
                 emit(t, (0x20 | m, 128))
             if sent_vol[m] is not None:
                 set_volume(t, m, 100)
+            base[m] = 100
             if sent_prog[m] and m != 15:
                 sent_prog[m] = 0
                 emit(t, (0x40 | m, 0, 0))
 
+    cut = False
     for n, midi in enumerate(files):
+        if cut:
+            break
         start = end
         if n:
             join(start)
@@ -141,6 +182,10 @@ def convert(data, report=None):
         rpn = [(127, 127)] * 16
         for t, status, d in to_mus_ticks(division, events):
             t += start
+            if limit and t >= limit:
+                cut = True
+                break
+            fade_until(t)
             end = max(end, t)
             if status in (0x51, 0x2F):
                 continue
@@ -184,6 +229,12 @@ def convert(data, report=None):
                 if ctl in (7, 11, 121):
                     set_volume(t, m, (vol[c] * expr[c] + 63) // 127)
 
+    if cut:
+        fade_until(limit)
+        for m in used():
+            emit(limit, (0x30 | m, 11))      # all notes off
+        end = limit
+
     score = bytearray()
     for i, (t, evs) in enumerate(groups):
         evs[-1][0] |= 0x80
@@ -208,8 +259,8 @@ def convert(data, report=None):
            + b''.join(struct.pack('<H', p) for p in instrs) + bytes(score))
     if report:
         notes = sum(1 for _, evs in groups for ev in evs if ev[0] & 0x70 == 0x10)
-        report('%d notes on %d channels over %.1f s, programs %s -> MUS score %d bytes'
-               % (notes, len(channels), end / TICK_HZ,
+        report('%d notes on %d channels over %.1f s%s, programs %s -> MUS score %d bytes'
+               % (notes, len(channels), end / TICK_HZ, ' (cut, faded)' if cut else '',
                   ' '.join(str(p) for p in instrs) or 'none', len(score)))
     return mus
 
@@ -219,8 +270,10 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('midi', nargs='+', help='one file, or several to play in turn')
     ap.add_argument('-o', '--out', help='output (default <first midi>.mus)')
+    ap.add_argument('--seconds', type=float, help='cut it here, with a fade')
     args = ap.parse_args()
-    mus = convert([open(m, 'rb').read() for m in args.midi], report=print)
+    mus = convert([open(m, 'rb').read() for m in args.midi], report=print,
+                  seconds=args.seconds)
     out = args.out or os.path.splitext(args.midi[0])[0] + '.mus'
     with open(out, 'wb') as f:
         f.write(mus)
