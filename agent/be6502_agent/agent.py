@@ -43,7 +43,8 @@ builds exist for this. Match pictures to tunes by game name.
 - DoomPlay_* builds play on the OPL2 through Doom's music driver: Doom's own \
 tracks (DoomPlay_D_E1M1 and the like) and MIDI files: Final Fantasy VI \
 and VII under HVSC/Final_Fantasy/opl2, Zelda: Ocarina of Time (OoT_) under \
-Zelda_OoT. Don't call a MIDI build Doom music. The player switches the SKpico's second SID to FM by itself.
+Zelda_OoT, Castlevania: Symphony of the Night (SotN_) under Castlevania_SotN. \
+Don't call a MIDI build Doom music. The player switches the SKpico's second SID to FM by itself.
 - When a tune starts, the user is sent a card saying what it plays on (SID \
 chip, PAL/NTSC, second SID, FM). Don't repeat it; answer questions about it.
 - play_tune waits for the user to approve it. If they decline, ask what they \
