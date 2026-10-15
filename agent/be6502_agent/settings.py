@@ -34,7 +34,7 @@ def _flag(name: str) -> bool:
 # --- Local model ---------------------------------------------------------------
 # Any OpenAI-compatible /v1/chat/completions server. On the Pi this is the
 # Mac running ~/code/local-llm/serve.sh with HOST=0.0.0.0, e.g.
-# http://192.168.0.152:8080/v1
+# http://Andrews-MacBook-Pro.local:8080/v1 - by name, since its IP changes
 LOCAL_BASE_URL = os.environ.get("LOCAL_LLM_URL", "http://127.0.0.1:8080/v1")
 LOCAL_MODEL = os.environ.get("LOCAL_LLM_MODEL", "lmstudio-community/Qwen3.8-27B-MLX-6bit")
 LOCAL_TEMPERATURE = float(os.environ.get("LOCAL_LLM_TEMPERATURE", "0.6"))

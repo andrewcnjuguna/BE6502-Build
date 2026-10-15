@@ -8,7 +8,7 @@ unless they say otherwise.
 
 | | |
 |---|---|
-| Mac | `192.168.0.152` (DHCP - if it changes, update `LOCAL_LLM_URL` in the Pi's `.env`) |
+| Mac | `Andrews-MacBook-Pro.local` - its IP changes (DHCP), so the Pi finds it by name |
 | Pi | Pi 5, `andrew@192.168.0.161`, key login from the Mac |
 | BE6502 serial | PL2303, 19200 8N1. Mac: `/dev/cu.PL2303G-USBtoUART210`. Pi: `/dev/ttyUSB0` |
 | Model server | `~/code/local-llm/serve.sh` on the Mac, port 8080, Qwen3.8 27B 6-bit |
@@ -227,7 +227,8 @@ Chats with the agent in a terminal instead of on Telegram.
 |---|---|
 | The BE6502 doesn't answer | a tune is playing: press reset. Still nothing: check the power, replug the adapter |
 | "port busy" | a `be6502.py term` is open somewhere. Quit it |
-| `/status` says the model server is not reachable | start `serve.sh` with `HOST=0.0.0.0`; check the Mac is awake and its address hasn't changed |
+| `/status`: model server "No route to host" | the Mac's name isn't reaching it - is the Mac awake and on the same network? Check `LOCAL_LLM_URL` in the Pi's `.env` is `http://Andrews-MacBook-Pro.local:8080/v1`, not an IP |
+| `/status`: model server "Connection refused" | the Mac is there but the server isn't - start `serve.sh` with `HOST=0.0.0.0` |
 | The bot doesn't reply at all | read the log (`journalctl` above). "409 Conflict" means something else is polling the same bot token |
 | A tune loads but is silent | it may be a known non-player - see `PORTED_TUNES.md` in the SidPlayer repo. Is the clock 1 MHz? |
 | "a byte was dropped" | load again. It keeps happening: add `--verify` |
