@@ -15,6 +15,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
+from pathlib import Path
 
 from . import machine, settings
 from .agent import BE6502Agent
@@ -33,7 +35,9 @@ HELP = (
     "/help - this message\n\n"
     "Anything else goes to the model, e.g.\n"
     "  what Rob Hubbard tunes do you have?\n"
-    "  play Paperboy with its picture\n\n"
+    "  play Paperboy with its picture\n"
+    "  get Martin Galway's Wizball from HVSC\n"
+    "  make a picture from the Last Ninja cover\n\n"
     "Loading pauses for your Approve/Decline tap. After a tune, press reset "
     "on the BE6502 before the next one."
 )
@@ -118,6 +122,29 @@ class TelegramUI:
             except Exception as exc:
                 print(f"[telegram] send failed: {exc}", file=sys.stderr)
 
+    def photo(self, path: str, caption: str) -> None:
+        """A picture -> Telegram (sendPhoto takes a file upload, not JSON)."""
+        print(f"{caption} [{path}]", flush=True)
+        boundary = uuid.uuid4().hex
+        parts = []
+        for key, value in (("chat_id", str(self.chat_id)), ("caption", caption[:1000])):
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n'
+                         f"{value}\r\n".encode())
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; '
+                     f'filename="preview.png"\r\nContent-Type: image/png\r\n\r\n'.encode()
+                     + Path(path).read_bytes() + b"\r\n")
+        parts.append(f"--{boundary}--\r\n".encode())
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{self.token}/sendPhoto", data=b"".join(parts),
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                if not json.load(resp).get("ok"):
+                    raise RuntimeError("not ok")
+        except Exception as exc:
+            print(f"[telegram] photo failed: {exc}", file=sys.stderr)
+            self.say(f"{caption}\n(the preview could not be sent: {exc})")
+
     def confirm(self, description: str) -> bool:
         """Approve/Decline buttons, blocking until answered or timed out
         (= declined). Any text other than yes/no declines and becomes the
@@ -197,7 +224,7 @@ class TelegramUI:
 
 def main():
     ui = TelegramUI()
-    agent = BE6502Agent(confirm=ui.confirm, on_status=ui.say, on_text=ui.say)
+    agent = BE6502Agent(confirm=ui.confirm, on_status=ui.say, on_text=ui.say, on_photo=ui.photo)
     ui.say(f"BE6502 agent online ({agent.model_name}).\n{status_report()}\n\n/help for commands.")
     while True:
         try:

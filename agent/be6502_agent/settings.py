@@ -56,6 +56,10 @@ TUNE_DIRS = [
     if p.strip()
 ]
 
+# Where downloaded tunes and pictures go. Keep it inside a tune folder, so
+# list_tunes and list_pictures find what was fetched.
+DOWNLOAD_DIR = Path(os.environ.get("BE6502_DOWNLOADS", "") or TUNE_DIRS[0] / "downloads").expanduser()
+
 # --- Telegram ------------------------------------------------------------------
 # A bot of its own (from @BotFather): two processes polling one bot token
 # fight over its updates, so do not reuse the flash agent's bot.

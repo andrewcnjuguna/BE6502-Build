@@ -18,7 +18,7 @@ from .tools import GATED_TOOLS, TOOLS, announce, execute_tool
 MAX_TOOL_ROUNDS = 12
 
 SYSTEM_PROMPT = """\
-You run music on the user's BE6502, a Ben Eater 6502 breadboard computer, \
+You run music and pictures on the user's BE6502, a Ben Eater 6502 breadboard computer, \
 from a Raspberry Pi wired to its serial port. The user talks to you over \
 Telegram, so keep replies short and plain - no Markdown tables.
 
@@ -52,6 +52,19 @@ want instead.
 - If a load fails, report the reason the tool gave. A dropped byte is worth \
 one retry; anything about the port means the user should check the adapter.
 
+Adding to the library:
+- Tunes the library doesn't have can come from HVSC: search_hvsc, then \
+fetch_hvsc with the paths it printed. Fetch only what the user asked for - \
+a handful, not a composer's whole folder. Some tunes are skipped as not \
+playable here; say why. Then play from list_tunes as usual.
+- Pictures: find_cover, then make_picture with one URL it listed - never \
+make up a URL. For the screen, prefer a C64 title or loading screen from \
+C64-Wiki (they convert best), or the box cover if the user asks for the \
+cover. A tall box cover looks better with fill=true. The user is sent a \
+preview; don't describe it. Name the picture after the game.
+- Picture and tune together need a screen-safe tune (ending below $2000). \
+HVSC tunes moved to $1000 usually are; list_tunes says.
+
 Don't make up results: say a tune is running only after play_tune returns \
 without an error. You can't hear it - if the user says it is silent, \
 believe them; some tunes are known not to play here.
@@ -59,7 +72,7 @@ believe them; some tunes are known not to play here.
 
 
 class BE6502Agent:
-    def __init__(self, confirm, on_status=print, on_text=None):
+    def __init__(self, confirm, on_status=print, on_text=None, on_photo=None):
         """confirm(description) -> bool asks the operator to approve a gated
         tool call; on_status(text) shows progress; on_text(text) gets each
         reply (None = stream to stdout, the terminal behaviour)."""
@@ -68,6 +81,7 @@ class BE6502Agent:
         self.confirm = confirm
         self.on_status = on_status
         self.on_text = on_text
+        self.on_photo = on_photo  # on_photo(path, caption); None = path in a status line
 
     @property
     def model_name(self) -> str:
@@ -106,9 +120,13 @@ class BE6502Agent:
         try:
             note = announce(block.name, dict(block.input))
         except Exception as exc:
-            note = f"[could not describe it: {exc}]"
+            note = (f"[could not describe it: {exc}]", None)
         if note:
-            self.on_status(note)
+            text, photo = note
+            if photo and self.on_photo:
+                self.on_photo(photo, text)
+            else:
+                self.on_status(text + (f"\n{photo}" if photo else ""))
         return result
 
     def send(self, user_message: str):

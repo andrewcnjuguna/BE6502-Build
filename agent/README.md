@@ -24,6 +24,10 @@ phone ── Telegram ── Pi ── USB serial ── BE6502
 | `list_pictures` | the 8 KB `*_screen.bin` pictures |
 | `play_tune` | **asks you first** (Approve/Decline), then loads the picture and the tune and runs it |
 | `read_memory` | up to 256 bytes through WozMon |
+| `search_hvsc` | searches the HVSC index (61,000 tunes) by words in the path |
+| `fetch_hvsc` | downloads up to 8 tunes with `code/hvsc_fetch.py`: skips what this machine can't play (with the reason), moves too-high tunes to `$1000` with sidreloc, converts with `SidToBE6502.py` |
+| `find_cover` | lists a game's pictures on C64-Wiki and Wikipedia - covers and title screens first |
+| `make_picture` | downloads one of them and converts it with `code/img2be6502.py`; you get a preview on Telegram |
 
 Loading goes through `code/be6502.py`'s `load_program`, the same code as
 the CLI. That covers the 2 ms byte timing, the tail read-back that catches
@@ -39,6 +43,15 @@ from the model. For a converted tune that is the `SKSetup` routine
 The older hand-ported tunes don't set the SKpico, so their card says they
 play on whatever SKConfig last saved. Titles are the 16-character LCD
 strings, so long ones are cut off.
+
+Downloads go into `downloads/` in the tune library (`BE6502_DOWNLOADS` to
+change it): `downloads/hvsc/converted/` for tunes, `downloads/pictures/` for
+pictures. `list_tunes` and `list_pictures` find them straight away. Only file
+names, sizes and URLs from the wiki pages reach the model, never page text.
+`make_picture` fetches only from C64-Wiki and Wikimedia. C64-Wiki turns
+scripts away from its search and API, so `find_cover` tries likely page
+names (`The_Last_Ninja`, `Paperboy`) directly. If it finds nothing, give the
+exact title.
 
 Tunes loop forever and only reset stops them. The agent cannot press reset,
 so after each tune it asks you to.
@@ -73,12 +86,13 @@ Any Pi on the LAN with Python 3.9 or newer (Raspberry Pi OS Bullseye or
 later). The agent does no model work, so a Pi 3 is plenty.
 
 ```bash
-sudo apt install -y git python3-venv
+sudo apt install -y git python3-venv acme        # acme assembles converted tunes
 sudo usermod -aG dialout $USER                # serial access; log out and back in
 git clone https://github.com/andrewcnjuguna/BE6502-Build.git ~/BE6502-Build
 cd ~/BE6502-Build/agent
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env && nano .env             # token, chat id, the Mac's address
+make -C ~/BE6502-Build/code/sidreloc          # moves too-high HVSC tunes
 ```
 
 The tune library comes from the Mac. Clone the SidPlayer repo and you miss
@@ -110,6 +124,14 @@ This runs a scripted conversation between the local model and the fake
 WozMon: look tunes up, play one with its picture, refuse a second load
 until reset, then carry on. It prints each tool call and a pass/miss line.
 This is the test of the model itself.
+
+```bash
+.venv/bin/python tests/try_library.py
+```
+
+This has the model fetch a tune from HVSC, make a picture from a title
+screen, and explain a tune that can't be played. It downloads for real, into
+a temporary folder that is deleted afterwards.
 
 ```bash
 .venv/bin/python -m be6502_agent

@@ -15,6 +15,7 @@ unless they say otherwise.
 | Telegram bot | @be6502_bot - answers only your chat |
 | Pi agent | `~/BE6502-Build` on the Pi, a git checkout. Secrets in `agent/.env`, which is not in git |
 | Tune library | `~/code/BE6502_SidPlayer` on the Mac, copied to `~/BE6502_SidPlayer` on the Pi |
+| Bot downloads | `~/BE6502_SidPlayer/downloads/` on the Pi only: `hvsc/converted/` tunes, `pictures/` screens |
 
 The serial adapter is plugged into one machine at a time. Only one program
 can use the port at once - quit a `be6502.py term` before loading.
@@ -137,6 +138,10 @@ The bot needs the server running and the Mac awake.
 
 ### Day to day
 
+The bot can also fetch tunes from HVSC and make pictures from game covers
+on C64-Wiki or Wikipedia: "get Rob Hubbard's Commando from HVSC", "make a
+picture from the Last Ninja title screen". You get a preview of each picture.
+
 When a tune starts, the bot sends a **now playing** card: SID chip,
 PAL/NTSC, second SID or FM, play rate.
 
@@ -181,7 +186,22 @@ Gets code pushed from the Mac.
 rsync -a --exclude .git --exclude '*.exe' --exclude '*.dll' ~/code/BE6502_SidPlayer/ andrew@192.168.0.161:BE6502_SidPlayer/
 ```
 
-Copies new tunes to the Pi. It is not a git clone, because `C64_games/`,
+Copies new tunes to the Pi. Tunes and pictures the bot downloaded stay put:
+rsync without `--delete` leaves them alone.
+
+```bash
+rsync -a andrew@192.168.0.161:BE6502_SidPlayer/downloads/ ~/code/BE6502_SidPlayer/downloads/
+```
+
+Copies what the bot downloaded back to the Mac.
+
+```bash
+ssh andrew@192.168.0.161 'sudo apt install -y acme && make -C ~/BE6502-Build/code/sidreloc && ~/BE6502-Build/agent/.venv/bin/pip install -r ~/BE6502-Build/agent/requirements.txt'
+```
+
+Installs what downloading needs: the assembler, sidreloc, py65 and Pillow.
+It's already done on this Pi; run it again on a fresh one, or if
+`requirements.txt` changes. It is not a git clone, because `C64_games/`,
 the Doom tracks and the `.sym` files are gitignored.
 
 ### Settings
@@ -220,6 +240,13 @@ ssh -t andrew@192.168.0.161 'cd ~/BE6502-Build/agent && .venv/bin/python -m be65
 ```
 
 Chats with the agent in a terminal instead of on Telegram.
+
+```bash
+ssh andrew@192.168.0.161 'cd ~/BE6502-Build/agent && .venv/bin/python tests/try_library.py'
+```
+
+Has the model fetch from HVSC and make a picture, into a temporary folder.
+This tests the download tools and the model together. Needs the model server.
 
 ## When something is wrong
 
